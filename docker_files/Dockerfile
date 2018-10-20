@@ -4,6 +4,9 @@ RUN apt-get update
 RUN apt-get install --no-install-recommends -y apt-utils software-properties-common curl nano unzip openssh-server
 RUN apt-get install -y python3 python3-dev python-distribute python3-pip git
 
+# install midnight commander
+RUN apt-get install -y mc
+
 # main python packages
 RUN pip3 install --upgrade pip
 RUN pip3 install --upgrade numpy scipy matplotlib scikit-learn pandas seaborn plotly jupyter statsmodels
@@ -68,6 +71,9 @@ RUN pip3 install --upgrade catboost
 RUN pip3 install --upgrade pystan cython
 RUN pip3 install --upgrade fbprophet
 
+# Keras with TensorFlow backend
+#RUN pip3 install --upgrade spyder-kernels
+
 COPY docker_files/entry-point.sh /
 
 # Final setup: directories, permissions, ssh login, symlinks, etc
@@ -82,4 +88,5 @@ WORKDIR /home/user
 EXPOSE 22 4545
 
 ENTRYPOINT ["/entry-point.sh"]
+CMD service ssh start
 CMD ["shell"]
