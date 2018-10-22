@@ -399,6 +399,7 @@ arr_dep_delays_df = arr_dep_delays_df[arr_dep_delays_df.ArrDelay < arr_dep_delay
 arr_dep_delays_df = arr_dep_delays_df[arr_dep_delays_df.DepDelay < arr_dep_delays_df.DepDelay.quantile(.95)]
 arr_dep_delays_df=arr_dep_delays_df.reset_index()
 
+# box plot
 fig, ax = plt.subplots(figsize=(12,10))
 sns.boxplot(
         x='UniqueCarrier',
