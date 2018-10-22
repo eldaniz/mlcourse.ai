@@ -239,8 +239,8 @@ psorted[:10]
 pp = flights_df[flights_df['CancellationCode'] != 'nan']
 sns.countplot(x='CancellationCode', data=pp)
 cancell_reasons = {'A' : 'Carrier', 'B': 'Weather conditions', 'C': 'National Air System', 'D': 'Security reasons'}
-cancell_reasons[pp.groupby('CancellationCode').size().sort_values(ascending=False).index[0]]
-
+print(cancell_reasons[pp.groupby('CancellationCode').size().sort_values(ascending=False).index[0]])
+#!!! print(pp['CancellationCode'].mode())
 
 # **3. Which route is the most frequent, in terms of the number of flights?**
 #
@@ -254,8 +254,11 @@ cancell_reasons[pp.groupby('CancellationCode').size().sort_values(ascending=Fals
 
 
 
-#flights_df.groupby(['Origin', 'Dest']).size().max()
 flights_df.groupby(['Origin', 'Dest']).size().idxmax()
+
+#!!! flights_df['Route'] = flights_df['Origin'] + '->' + flights_df['Dest']
+#!!! flights_df['Route'].value_counts().head()
+#!!! flights_df[['Origin','Dest']].groupby(['Origin','Dest']).size().idxmax()
 
 
 
@@ -273,18 +276,9 @@ flights_df.groupby(['Origin', 'Dest']).size().idxmax()
 
 
 
-
 delayColumns = flights_df.columns[flights_df.columns.str.contains('Delay')]
 
-delayed_df = flights_df[
-#        (flights_df['ArrDelay'] > 0) |
-        (flights_df['DepDelay'] > 0)
-#        (flights_df['CarrierDelay'] > 0) |
-#        (flights_df['WeatherDelay'] > 0) |
-#        (flights_df['NASDelay'] > 0) |
-#        (flights_df['SecurityDelay'] > 0) |
-#        (flights_df['LateAircraftDelay'] > 0)
-        ]
+delayed_df = flights_df[flights_df['DepDelay'] > 0]
 
 delayed_df.groupby(['Origin', 'Dest']).size().sort_values(ascending=False)[:5]
 
@@ -307,9 +301,10 @@ top5delayed_df.shape[0]
 #  - Flights are normally distributed within time interval [0-23] (Search for: Normal distribution, bell curve).
 #  - Flights are uniformly distributed within time interval [0-23].
 #  - In the period from 0 am to 4 am there are considerably less flights than from 7 pm to 8 pm.
-depTime_df = flights_df[~np.isnan(flights_df['DepTime'])]
 
+depTime_df = flights_df[~np.isnan(flights_df['DepTime'])]
 depTime_df['DepTime'] = depTime_df['DepTime'].astype(int)
+#!!! depTime_df = (flights_df['DepTime'].dropna() / 100).astype('int')
 
 depTime_df['DepTimeHour'] = (depTime_df['DepTime'] / 100).astype(int)
 sns.countplot(x=depTime_df['DepTimeHour'])
@@ -361,7 +356,8 @@ cancellation_df.groupby('CancellationCode')['Cancelled'].sum()
 # - September
 # - April ---
 
-
+#!!!
+flights_df.loc[flights_df['CancellationCode'] == 'A', 'Month'].value_counts()
 
 
 # You code here
@@ -378,7 +374,8 @@ cancellation_df.groupby('CancellationCode')['Cancelled'].sum()
 
 cancellation4_df = flights_df[flights_df['CancellationCode'] == 'A']
 cancellation4_df.groupby('UniqueCarrier')['Cancelled'].sum().sort_values(ascending=False)[:1]
-
+#!!! flights_df.loc[(flights_df['CancellationCode'] == 'A') & (flights_df['Month'] == 4),
+#!!!               'UniqueCarrier'].value_counts().head()
 
 
 # **10. Examine median arrival and departure delays (in time) by carrier.
