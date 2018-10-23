@@ -1,0 +1,1 @@
+call D:\DiskD\Eldaniz\Anaconda3\Scripts\start_jupyter.bat D:\DiskD\Eldaniz\ML\mlcourse.ai
