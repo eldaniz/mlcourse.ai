@@ -24,6 +24,9 @@ from matplotlib import pyplot as plt
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score
 from sklearn.tree import DecisionTreeClassifier, export_graphviz
+from graphviz import Source
+from IPython.display import Image
+import pydotplus
 
 
 # ## 1. A simple example of regression using decision trees
@@ -39,6 +42,7 @@ y = X ** 3
 plt.scatter(X, y)
 plt.xlabel(r'$x$')
 plt.ylabel(r'$y$');
+plt.show()
 
 
 # Let's make several steps to build the decision tree. Let's choose the
@@ -130,6 +134,7 @@ ax.plot(xx, yy)
 plt.xlabel('x')
 plt.ylabel('Prediction')
 plt.scatter(X, y)
+plt.show()
 
 
 
@@ -219,10 +224,6 @@ tree.fit(X_train, y_train)
 # are usually run in terminal/command line.
 
 # use .dot format to visualize a tree
-from sklearn.tree import export_graphviz
-from graphviz import Source
-from IPython.display import Image
-
 pydot_graph = pydotplus.graph_from_dot_data(export_graphviz(tree, out_file=None, filled=True, feature_names=X.columns))
 #pydot_graph.set_size('"15"')
 #Source(export_graphviz(tree, out_file=None, filled=True, feature_names=X.columns))
@@ -283,6 +284,7 @@ plt.plot(n_maxdepth, holdout_scores, label='Holdout')
 plt.xlabel('max_depth')
 plt.title('Tree accuracy')
 plt.legend();
+plt.show()
 
 
 
