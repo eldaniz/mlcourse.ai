@@ -56,6 +56,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
 from xgboost.sklearn import XGBClassifier
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 import os
 import pickle
 
@@ -1199,7 +1200,7 @@ write_to_submission_file(y_test, 'baseline_2_3.csv')
 
 
 # -------------------------------------------------------------------------
-#  0.9937  ==> 0.91871(old 0.92331)
+#  0.9937['lbfgs']  ==> 0.91871(old['newton'] 0.92331)
 # -------------------------------------------------------------------------
 experiment_name = 'baseline_2_4_3features_CV'
 
@@ -1247,7 +1248,7 @@ print(clf_grid.best_score_)
 # ---------------- predict --------------------------
 X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
                             added_features_scaler[idx_split:, :]]))
-y_test = clf_grid.predict_proba(X_test)[:, 1]
+y_test = clf_full.predict_proba(X_test)[:, 1]
 write_to_submission_file(y_test, experiment['submission_file'])
 
 
@@ -1477,3 +1478,59 @@ make_submission(experiment['submission_file'],
 #PATH_TO_DATA = "./"
 #with open(os.path.join(PATH_TO_DATA, 'experiments.pkl'), 'wb') as X10_pkl:
 #    pickle.dump(experiments, X10_pkl, protocol=2)
+
+
+# -------------------------------------------------------------------------
+#    ==>
+# -------------------------------------------------------------------------
+experiment_name = 'rf_3_CV'
+
+experiment = {}
+experiment['features'] = [
+        'start_month',
+        'start_hour',
+        'morning']
+
+rf_params = {
+              'criterion': ['gini', 'entropy'],
+              'max_depth': [2, 5, 6, 10, 20],
+              'min_samples_leaf': [5, 10, 50],
+              'max_features': [0.7, 'sqrt', 'log2'],
+              'n_estimators': [10, 20, 50, 200], #number of trees, change it to 1000 for better results
+              'random_state': [17]}
+
+
+rf_grid, experiment, X_train, y_train, added_features_scaler = \
+    do_experiment_gridCV(
+            RandomForestClassifier(random_state=17),
+            grid_params=rf_params,
+            data=full_new_feat,
+            features=experiment['features'],
+            scoring='roc_auc',
+            idx_split=idx_split,
+            cv=StratifiedKFold(
+                    n_splits=5,
+                    shuffle=True,
+                    random_state=17),
+            random_state=17)
+
+rf_grid = experiment['clf_grid']
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+print('best score: {}'.format(experiment['score']))
+print(rf_grid.best_estimator_)
+print(rf_grid.best_score_)
+
+rf_full = RandomForestClassifier(random_state=17, **rf_grid.best_params_)
+rf_full.fit(X_train, y_train)
+rf_full.score(X_train, y_train)
+
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+# ---------------- predict --------------------------
+X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
+                            added_features_scaler[idx_split:, :]]))
+y_test = rf_full.predict_proba(X_test)[:, 1]
+write_to_submission_file(y_test, experiment['submission_file'])
