@@ -55,16 +55,20 @@ from sklearn.linear_model import LogisticRegression
 from matplotlib import pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
+from xgboost.sklearn import XGBClassifier
+import os
+import pickle
+
 sns.set()
 
 # -------------------------------------------------------------------------
-def get_auc_lr_valid(X, y, C=1.0, seed=17, ratio=0.9):
+def get_auc_lr_valid(X, y, C=1.0, seed=17, ratio=0.9, solver='liblinear'):
     # Split the data into the training and validation sets
     idx = int(round(X.shape[0] * ratio))
     # Classifier training
     lr = LogisticRegression(C=C,
                             random_state=seed,
-                            solver='liblinear').fit(X[:idx, :], y[:idx])
+                            solver=solver).fit(X[:idx, :], y[:idx])
     # Prediction for validation set
     y_pred = lr.predict_proba(X[idx:, :])[:, 1]
     # Calculate the quality
@@ -85,22 +89,22 @@ def write_to_submission_file(predicted_labels,
     predicted_df.to_csv(out_file, index_label=index_label)
 
 # -------------------------------------------------------------------------
-def do_experiment(data, features, Cs, idx_split):
+def do_experiment(data, features, Cs, idx_split, solver='liblinear'):
     # Compose the training set
     experiment = {}
     experiment['features'] = features
 
-    tmp_scaled = StandardScaler().fit_transform(data[experiment['features']])
+    added_features_scaler = StandardScaler().fit_transform(data[features])
     X_train = csr_matrix(hstack([full_sites_sparse[:idx_split, :],
-                                 tmp_scaled[:idx_split, :]]))
+                                 added_features_scaler[:idx_split, :]]))
 
     # Capture the quality with default parameters
-    experiment['score_C_default'] = get_auc_lr_valid(X_train, y_train)
+    experiment['score_C_default'] = get_auc_lr_valid(X_train, y_train, solver=solver)
     print(experiment['score_C_default'])
 
     scores = []
     for C in tqdm(Cs):
-        scores.append(get_auc_lr_valid(X_train, y_train, C=C))
+        scores.append(get_auc_lr_valid(X_train, y_train, C=C, solver=solver))
 
     experiment['all_Cs'] = Cs
     experiment['all_scores'] = scores
@@ -119,20 +123,68 @@ def do_experiment(data, features, Cs, idx_split):
                 linestyle='dashed')
     plt.show()
 
-    return (experiment, X_train, y_train)
+    return (experiment, X_train, y_train, added_features_scaler)
+
 
 # ------------------------------------------------------------------------
-def make_submission(file_name, X_train, y_train, C, idx_split, random_state=17):
+def do_experiment_gridCV(clf,
+                         grid_params,
+                         data,
+                         features,
+                         idx_split,
+                         scoring='auc_roc',
+                         cv=StratifiedKFold(
+                                 n_splits=5,
+                                 shuffle=True,
+                                 random_state=17),
+                         random_state=17
+                         ):
+    experiment = {}
+    experiment['features'] = features
+
+    added_features_scaler = \
+        StandardScaler().fit_transform(data[features])
+    X_train = csr_matrix(hstack([full_sites_sparse[:idx_split, :],
+                                 added_features_scaler[:idx_split, :]]))
+
+    clf_grid = GridSearchCV(
+            clf,
+            grid_params,
+            scoring=scoring,
+            cv=skf,
+            n_jobs=3,
+            verbose=True,
+            return_train_score=True)
+
+    clf_grid.fit(X_train, y_train)
+
+    experiment['score'] = clf_grid.best_score_
+    experiment['clf_grid'] = clf_grid
+
+#    print(xgb_grid.best_estimator_)
+#    print(xgb_grid.best_params_)
+#    print('[Test] Max ROC_AUC value: {}'.format(experiment['score']))
+#    print('[Train] Max ROC_AUC value: {}'.
+#          format(xgb_grid.cv_results_['mean_train_score'][xgb_grid.best_index_]))
+#    print('Best score: {}'.format(experiment['score']))
+
+    return (clf_grid, experiment, X_train, y_train, added_features_scaler)
+
+
+# ------------------------------------------------------------------------
+def make_submission(file_name, X_train, y_train, added_features_scaler,
+                    C, idx_split, random_state=17,
+                    solver='liblinear'):
     # Train the model on the whole training data set using optimal
     # regularization parameter
     lr2_2 = LogisticRegression(
             C=C,
             random_state=random_state,
-            solver='liblinear').fit(X_train, y_train)
+            solver=solver).fit(X_train, y_train)
 
     # Make a prediction for the test set
     X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
-                                tmp_scaled[idx_split:, :]]))
+                                added_features_scaler[idx_split:, :]]))
     y_test = lr2_2.predict_proba(X_test)[:, 1]
 
     write_to_submission_file(y_test, file_name)
@@ -1022,13 +1074,17 @@ optimal_c1 = optimal_c
 experiments = {}
 
 # -------------------------------------------------------------------------
+# 0.9612 ==> 0.92784
+# -------------------------------------------------------------------------
 experiment_name = 'baseline_2'
-experiment, X_train, y_train = do_experiment(data=full_new_feat,
-                                             features=['start_month',
-                                                       'start_hour',
-                                                       'morning'],
-                                             Cs=np.logspace(-3, 1, 10),
-                                             idx_split=idx_split)
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=['start_month',
+                            'start_hour',
+                            'morning'],
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split,
+                  solver='liblinear')
 
 print('best score: {}\ndefault score:{}'.
       format(
@@ -1042,8 +1098,10 @@ experiments[experiment_name] = experiment
 make_submission(experiment['submission_file'],
                 X_train,
                 y_train,
+                added_features_scaler,
                 experiments[experiment_name]['optimal_C'],
-                idx_split=idx_split
+                idx_split=idx_split,
+                solver='liblinear'
                 )
 
 # -------------------------------------------------------------------------
@@ -1066,6 +1124,8 @@ make_submission(experiment['submission_file'],
 
 
 # -------------------------------------------------------------------------
+# 0.97 ==> 0.92167
+# -------------------------------------------------------------------------
 experiment_name = 'baseline_2_2'
 
 #full_new_feat['morning'] = (7 <= full_new_feat['start_hour'] <= 11).astype('int')
@@ -1076,13 +1136,15 @@ full_new_feat['evening'] = \
     ((19 <= full_new_feat['start_hour']) &
      (full_new_feat['start_hour'] <= 23)).astype('int')
 
-experiment, X_train, y_train = do_experiment(data=full_new_feat,
-                                             features=['start_month',
-                                                       'start_hour',
-                                                       'evening',
-                                                       'morning'],
-                                             Cs=np.logspace(-3, 1, 10),
-                                             idx_split=idx_split)
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=['start_month',
+                            'start_hour',
+                            'day',
+                            'evening',
+                            'morning'],
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
 
 print('best score: {}\ndefault score:{}'.
       format(
@@ -1096,17 +1158,25 @@ experiments[experiment_name] = experiment
 make_submission(experiment['submission_file'],
                 X_train,
                 y_train,
+                added_features_scaler,
                 experiments[experiment_name]['optimal_C'],
                 idx_split=idx_split
                 )
 
 # -------------------------------------------------------------------------
-
+#  ==> 0.92256
+# -------------------------------------------------------------------------
 
 logit_params = {
         'solver': ['liblinear', 'sag', 'newton-cg'],
         'C': Cs}
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
+
+experiment = {}
+experiment['features'] = [
+        'start_month',
+        'start_hour',
+        'morning']
 
 logit_grid = GridSearchCV(
         LogisticRegression(random_state=17),
@@ -1128,42 +1198,60 @@ write_to_submission_file(y_test, 'baseline_2_3.csv')
 
 
 
+# -------------------------------------------------------------------------
+#  0.9937  ==> 0.91871(old 0.92331)
+# -------------------------------------------------------------------------
+experiment_name = 'baseline_2_4_3features_CV'
 
-tmp_scaled = StandardScaler().fit_transform(full_new_feat[['start_month',
-                                                           'start_hour',
-                                                           'morning']])
-X_train = csr_matrix(hstack([full_sites_sparse[:idx_split, :],
-                             tmp_scaled[:idx_split,:]]))
-X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
-                            tmp_scaled[idx_split:, :]]))
-
-
+experiment = {}
+experiment['features'] = [
+        'start_month',
+        'start_hour',
+        'morning']
 
 logit_params = {
-        'solver': ['liblinear', 'sag', 'newton-cg'],
-        'C': Cs}
-skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
+#        'penalty': ['l1', 'l2'],
+        'solver': ['newton-cg', 'lbfgs', 'liblinear', 'sag', 'saga'],
+        'max_iter' : [100, 500],
+        'C': np.logspace(-3, 1, 10)}
 
-logit_grid = GridSearchCV(
-        LogisticRegression(random_state=17),
-        logit_params,
-        scoring='roc_auc',
-        cv=skf,
-        n_jobs=-1,
-        verbose=True)
+clf_grid, experiment, X_train, y_train, added_features_scaler = \
+    do_experiment_gridCV(
+            LogisticRegression(random_state=17),
+            grid_params=logit_params,
+            data=full_new_feat,
+            features=experiment['features'],
+            scoring='roc_auc',
+            idx_split=idx_split,
+            cv=StratifiedKFold(
+                    n_splits=5,
+                    shuffle=True,
+                    random_state=17),
+            random_state=17)
 
-logit_grid.fit(X_train, y_train)
-logit_grid.best_estimator_
-logit_grid.best_score_
-
-# Make a prediction for the test set
-y_test = logit_grid.predict_proba(X_test)[:, 1]
-
-write_to_submission_file(y_test, 'baseline_2_4_3features_newton.csv')
+clf_grid = experiment['clf_grid']
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
 
 
+clf_full = LogisticRegression(random_state=17, **clf_grid.best_params_)
+clf_full.fit(X_train, y_train)
+clf_full.score(X_train, y_train)
 
-import xgboost as xgb
+print('best score: {}'.format(experiment['score']))
+print(clf_grid.best_estimator_)
+print(clf_grid.best_score_)
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+# ---------------- predict --------------------------
+X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
+                            added_features_scaler[idx_split:, :]]))
+y_test = clf_grid.predict_proba(X_test)[:, 1]
+write_to_submission_file(y_test, experiment['submission_file'])
+
+
+
 
 #dtrain_X = xgb.DMatrix(X_train, label=y_train)
 #
@@ -1186,7 +1274,6 @@ import xgboost as xgb
 
 
 
-from xgboost.sklearn import XGBClassifier
 
 xgb_params = {
               'objective':['binary:logistic'],
@@ -1227,107 +1314,166 @@ y_test = xgb_grid.predict_proba(X_test)[:, 1]
 
 write_to_submission_file(y_test, 'baseline_2_5_xgb.csv')
 
-
-
-
-
-
+# --------------------------------------------------------------------------
+#  0.99 ==> 0.89170
+# --------------------------------------------------------------------------
+experiment_name = 'xgb_3'
 xgb_params = {
               'objective':['binary:logistic'],
-              'learning_rate': [0.05, 0.1, 0.02], #so called `eta` value
-              'max_depth': [2, 5, 6, 10, 20],
-              'min_child_weight': [11],
-              'silent': [1],
+              'learning_rate': [0.05], #so called `eta` value
+              'max_depth': [5, 10],
+#              'min_child_weight': [5, 11],
+              'silent': [0],
               'subsample': [0.8],
-              'colsample_bytree': [0.7],
-              'n_estimators': [10, 20, 50, 200], #number of trees, change it to 1000 for better results
+              'colsample_bytree': [0.3, 0.5, 0.7],
+              'n_estimators': [20, 1000], #number of trees, change it to 1000 for better results
               'random_state': [17]}
 
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
+
+experiment = {}
+experiment['features'] = [
+        'start_month',
+        'start_hour',
+        'morning']
+
+added_features_scaler = \
+    StandardScaler().fit_transform(full_new_feat[experiment['features']])
+X_train = csr_matrix(hstack([full_sites_sparse[:idx_split, :],
+                             added_features_scaler[:idx_split,:]]))
+
 
 xgb_grid = GridSearchCV(
         XGBClassifier(random_state=17),
         xgb_params,
         scoring='roc_auc',
         cv=skf,
-        n_jobs=-1,
+        n_jobs=3,
         verbose=True,
         return_train_score=True)
 
 xgb_grid.fit(X_train, y_train)
 
+experiment['score'] = xgb_grid.best_score_
+
 print(xgb_grid.best_estimator_)
 print(xgb_grid.best_params_)
-print('[Test] Max ROC_AUC value: {}'.format(xgb_grid.best_score_))
+print('[Test] Max ROC_AUC value: {}'.format(experiment['score']))
 #print('Best std score: {}'.
 #      format(xgb_grid.cv_results_['std_test_score'][xgb_grid.best_index_]))
 print('[Train] Max ROC_AUC value: {}'.
       format(xgb_grid.cv_results_['mean_train_score'][xgb_grid.best_index_]))
-print('Max ROC_AUC value: {}'.format(xgb_grid.best_score_))
+#print('Max ROC_AUC value: {}'.format(xgb_grid.best_score_))
+
+print('Best score: {}'.format(experiment['score']))
+
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
 
 
 # Make a prediction for the test set
+X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
+                            added_features_scaler[idx_split:, :]]))
 y_test = xgb_grid.predict_proba(X_test)[:, 1]
 
-write_to_submission_file(y_test, 'baseline_2_6_xgb.csv')
+write_to_submission_file(y_test, experiment['submission_file'])
+
+
+#plt.style.use('ggplot')
+#fig, ax = plt.subplots(figsize=(8, 4))
+#ax.plot(xgb_grid.cv_results_['mean_test_score'], color='red', label='cv')
+#ax.plot(xgb_grid.cv_results_['mean_train_score'], color='blue', label='train')
+#ax.legend(loc='best')
 
 
 
-
-
-
+# --------------------------------------------------------------------------
+experiment_name = 'seconds'
 
 # Find sessions' starting and ending
 full_new_feat['min'] = full_df[times].min(axis=1)
 full_new_feat['max'] = full_df[times].max(axis=1)
 
 # Calculate sessions' duration in seconds
-full_new_feat['seconds'] = (full_new_feat['max'] - full_new_feat['min']) / np.timedelta64(1, 's')
+full_new_feat['seconds'] = \
+    (full_new_feat['max'] - full_new_feat['min']) / np.timedelta64(1, 's')
 
-#full_new_feat['seconds'] = \
-#    full_df['time1'].apply(lambda ts: ts.hour).astype('float64')
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=['start_month',
+                            'start_hour',
+                            'seconds',
+                            'morning'],
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
 
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
 
-tmp_scaled = StandardScaler().fit_transform(full_new_feat[['start_month',
-                                                           'start_hour',
-                                                           'seconds',
-                                                           'morning']])
-X_train = csr_matrix(hstack([full_sites_sparse[:idx_split,:],
-                             tmp_scaled[:idx_split,:]]))
-X_test = csr_matrix(hstack([full_sites_sparse[idx_split:,:],
-                            tmp_scaled[idx_split:,:]]))
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
 
-# Capture the quality with default parameters
-score_C_ = get_auc_lr_valid(X_train, y_train)
-print(score_C_)
-
-Cs = np.logspace(-2, 1, 20)
-scores = []
-for C in tqdm(Cs):
-    scores.append(get_auc_lr_valid(X_train, y_train, C=C))
-
-score_optimal = np.array(scores).max()
-
-plt.plot(Cs, scores, 'ro-')
-plt.xscale('log')
-plt.xlabel('C')
-plt.ylabel('AUC-ROC')
-plt.title('Regularization Parameter Tuning')
-# horizontal line -- model quality with default C value
-plt.axhline(y=score_C_1, linewidth=.5, color='b', linestyle='dashed')
-plt.show()
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
 
 
-optimal_c = Cs[np.array(scores).argmax()]
-round(float(optimal_c), 2)
+# --------------------------------------------------------------------------
+experiment_name = 'max_interval'
 
-# Train the model on the whole training data set using optimal regularization parameter
-lr2_7 = LogisticRegression(
-        C=optimal_c,
-        random_state=17,
-        solver='liblinear').fit(X_train, y_train)
+def max_site_interval(r):
+    max_v = 0
+    for i in range(len(times) - 1):
+        diff = (r[times[i + 1]] - r[times[i]]) / np.timedelta64(1, 's')
+        max_v = max(max_v, diff)
 
-# Make a prediction for the test set
-y_test = lr2_7.predict_proba(X_test)[:, 1]
+    return max_v
 
-write_to_submission_file(y_test, 'baseline_2_7.csv')
+#full_df[times][2:3][['time1', 'time2']]
+#(full_df[times][2:3]['time2'] - full_df[times][2:3]['time1']) / np.timedelta64(1, 's')
+full_new_feat['max_interval'] = full_df[times].apply(max_site_interval, axis=1)
+
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=['start_month',
+                            'start_hour',
+                            'max_interval',
+                            'morning'],
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
+
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
+
+
+
+#PATH_TO_DATA = "./"
+#with open(os.path.join(PATH_TO_DATA, 'experiments.pkl'), 'wb') as X10_pkl:
+#    pickle.dump(experiments, X10_pkl, protocol=2)
