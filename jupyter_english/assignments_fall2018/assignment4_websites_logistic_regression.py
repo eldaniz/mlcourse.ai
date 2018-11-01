@@ -57,6 +57,7 @@ import seaborn as sns
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
 from xgboost.sklearn import XGBClassifier
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from tqdm import tqdm
 import os
 import pickle
 
@@ -138,7 +139,8 @@ def do_experiment_gridCV(clf,
                                  n_splits=5,
                                  shuffle=True,
                                  random_state=17),
-                         random_state=17
+                         random_state=17,
+                         n_jobs=2
                          ):
     experiment = {}
     experiment['features'] = features
@@ -153,7 +155,7 @@ def do_experiment_gridCV(clf,
             grid_params,
             scoring=scoring,
             cv=skf,
-            n_jobs=3,
+            n_jobs=n_jobs,
             verbose=True,
             return_train_score=True)
 
@@ -587,8 +589,8 @@ csr_matrix((data, indices, indptr)).todense()
 #
 # - 42%
 # - 47%
-# - 50% ---
-# - 53%
+# - 50%
+# - 53% ---
 #
 #
 #
@@ -598,10 +600,10 @@ csr_matrix((data, indices, indptr)).todense()
 
 sp_arr = csr_matrix((data, indices, indptr)).todense()
 print(sp_arr)
-sp_arr = np.delete(sp_arr, 0, axis=1)
-print(sp_arr)
+#sp_arr = np.delete(sp_arr, 0, axis=1)
+#print(sp_arr)
 print(sp_arr.nonzero()[0].shape[0])
-sp_arr.nonzero()[0].shape[0] / (sp_arr.shape[0] * sp_arr.shape[1]) * 100  # 50
+100 - sp_arr.nonzero()[0].shape[0] / (sp_arr.shape[0] * sp_arr.shape[1]) * 100 # 53%
 
 
 # Another benefit of using sparse matrices is that there are special
@@ -746,14 +748,15 @@ sns.countplot(
         x=train_new_feat[train_new_feat['target'] == 1]['start_month'],
         ax=ax)
 plt.ylabel('Sessions count')
-plt.title('Alice sessions count');
+plt.title('Alice sessions count')
 
 # all intruders train session
 fig, ax = plt.subplots(figsize=(10, 6))
 sns.countplot(x=train_new_feat[train_new_feat['target'] == 0]['start_month'],
               ax=ax)
 plt.ylabel('Intruder sessions count')
-plt.xticks(rotation=70);
+plt.xticks(rotation=70)
+plt.title('Intruder sessions')
 
 # In this way, we have an illustration and thoughts about the usefulness
 # of the new feature, add it to the training sample and check the quality
@@ -1004,8 +1007,6 @@ print(score_C_1)
 # [ ]:
 
 
-from tqdm import tqdm
-
 # List of possible C-values
 Cs = np.logspace(-3, 1, 10)
 scores = []
@@ -1074,6 +1075,9 @@ optimal_c1 = optimal_c
 # -------------------------------------------------------------------------
 experiments = {}
 
+#   Baseline2: 0.92784
+#   Baseline3: 0.95214
+
 # -------------------------------------------------------------------------
 # 0.9612 ==> 0.92784
 # -------------------------------------------------------------------------
@@ -1106,6 +1110,90 @@ make_submission(experiment['submission_file'],
                 )
 
 # -------------------------------------------------------------------------
+# 0.97438864373046574 ==> 0.93990
+# -------------------------------------------------------------------------
+experiment_name = 'week_day'
+
+full_new_feat['week_day'] = \
+    full_df['time1'].apply(lambda ts: ts.weekday()).astype('int')
+
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=['start_month',
+                            'start_hour',
+                            'week_day',
+                            'morning'],
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
+
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
+
+# -------------------------------------------------------------------------
+#  0.97442079812954985 ==>  0.94064
+# -------------------------------------------------------------------------
+experiment_name = 'intervals_week_day'
+
+#full_new_feat['weekend_day'] = \
+#    full_df['time1'].apply(lambda ts: ts.weekday() in [5, 6]).astype('int')
+
+intervals_columns = ['interval%s' %i for i in range(10-1)]
+for i in range(10-1):
+    full_new_feat[intervals_columns[i]] = \
+    (full_df[times[i + 1]] - full_df[times[i]]) / np.timedelta64(1, 's')
+    full_new_feat[intervals_columns[i]].fillna(0, inplace=True)
+
+features =['start_month',
+           'start_hour',
+           'week_day',
+           'morning']
+
+for v in intervals_columns:
+    features.append(v)
+
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=features,
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
+
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
+
+
+# -------------------------------------------------------------------------
 
 # In this part of the assignment, you have learned how to use sparse matrices, train logistic regression models, create new features and selected the best ones, learned why you need to scale features, and how to select hyperparameters. That's a lot!
 
@@ -1130,6 +1218,8 @@ make_submission(experiment['submission_file'],
 experiment_name = 'baseline_2_2'
 
 #full_new_feat['morning'] = (7 <= full_new_feat['start_hour'] <= 11).astype('int')
+
+# !!!!!!!!!! full_df !!!!!!!!!!!!!
 full_new_feat['day'] = \
     ((12 <= full_new_feat['start_hour']) &
      (full_new_feat['start_hour'] <= 18)).astype('int')
@@ -1163,6 +1253,171 @@ make_submission(experiment['submission_file'],
                 experiments[experiment_name]['optimal_C'],
                 idx_split=idx_split
                 )
+
+# -------------------------------------------------------------------------
+# 0.96236 ==> 0.93528
+# -------------------------------------------------------------------------
+experiment_name = 'weekend_day'
+
+full_new_feat['weekend_day'] = \
+    full_df['time1'].apply(lambda ts: ts.weekday() in [5, 6]).astype('int')
+
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=['start_month',
+                            'start_hour',
+                            'weekend_day',
+                            'morning'],
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
+
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
+
+
+# -------------------------------------------------------------------------
+#  0.98 ==> 0.93257
+# -------------------------------------------------------------------------
+experiment_name = 'intervals_week_day_cv'
+
+
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
+
+intervals_columns = ['interval%s' %i for i in range(10-1)]
+for i in range(10-1):
+    full_new_feat[intervals_columns[i]] = \
+    (full_df[times[i + 1]] - full_df[times[i]]) / np.timedelta64(1, 's')
+    full_new_feat[intervals_columns[i]].fillna(0, inplace=True)
+
+features = ['start_month',
+           'start_hour',
+           'week_day',
+           'morning']
+
+for v in intervals_columns:
+    features.append(v)
+
+logit_params = {
+        'solver': ['liblinear'],
+        'max_iter' : [100, 300],
+        'C': np.logspace(-3, 1, 10)}
+
+clf_grid, experiment, X_train, y_train, added_features_scaler = \
+    do_experiment_gridCV(
+            LogisticRegression(random_state=17),
+            grid_params=logit_params,
+            data=full_new_feat,
+            features=features,
+            scoring='roc_auc',
+            idx_split=idx_split,
+            cv=StratifiedKFold(
+                    n_splits=5,
+                    shuffle=True,
+                    random_state=17),
+            random_state=17)
+
+clf_grid = experiment['clf_grid']
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+print('best score: {}'.format(experiment['score']))
+print(clf_grid.best_estimator_)
+print(clf_grid.best_score_)
+
+
+
+clf_full = clf_grid
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+
+# => predict
+X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
+                            added_features_scaler[idx_split:, :]]))
+y_test = clf_full.predict_proba(X_test)[:, 1]
+write_to_submission_file(y_test, experiment['submission_file'])
+
+
+# -------------------------------------------------------------------------
+#  0.99406454462634242_full ==> 0.93257
+# -------------------------------------------------------------------------
+experiment_name = 'intervals_week_day_cv'
+
+
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=17)
+
+intervals_columns = ['interval%s' %i for i in range(10-1)]
+for i in range(10-1):
+    full_new_feat[intervals_columns[i]] = \
+    (full_df[times[i + 1]] - full_df[times[i]]) / np.timedelta64(1, 's')
+    full_new_feat[intervals_columns[i]].fillna(0, inplace=True)
+
+features = ['start_month',
+           'start_hour',
+           'week_day',
+           'morning']
+
+for v in intervals_columns:
+    features.append(v)
+
+logit_params = {
+        'solver': ['liblinear'],
+        'max_iter' : [100, 300],
+        'C': np.logspace(-3, 1, 10)}
+
+clf_grid, experiment, X_train, y_train, added_features_scaler = \
+    do_experiment_gridCV(
+            LogisticRegression(random_state=17),
+            grid_params=logit_params,
+            data=full_new_feat,
+            features=features,
+            scoring='roc_auc',
+            idx_split=idx_split,
+            cv=StratifiedKFold(
+                    n_splits=5,
+                    shuffle=True,
+                    random_state=17),
+            random_state=17)
+
+clf_grid = experiment['clf_grid']
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+print('best score: {}'.format(experiment['score']))
+print(clf_grid.best_estimator_)
+print(clf_grid.best_score_)
+
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+
+clf_full = LogisticRegression(random_state=17, **clf_grid.best_params_)
+clf_full.fit(X_train, y_train)
+clf_full.score(X_train, y_train)
+
+
+
+# => predict
+X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
+                            added_features_scaler[idx_split:, :]]))
+y_test = clf_full.predict_proba(X_test)[:, 1]
+write_to_submission_file(y_test, experiment['submission_file'])
+
 
 # -------------------------------------------------------------------------
 #  ==> 0.92256
@@ -1204,7 +1459,6 @@ write_to_submission_file(y_test, 'baseline_2_3.csv')
 # -------------------------------------------------------------------------
 experiment_name = 'baseline_2_4_3features_CV'
 
-experiment = {}
 experiment['features'] = [
         'start_month',
         'start_hour',
@@ -1443,12 +1697,14 @@ def max_site_interval(r):
 #full_df[times][2:3][['time1', 'time2']]
 #(full_df[times][2:3]['time2'] - full_df[times][2:3]['time1']) / np.timedelta64(1, 's')
 full_new_feat['max_interval'] = full_df[times].apply(max_site_interval, axis=1)
+full_new_feat['max_interval'].describe()
 
 experiment, X_train, y_train, added_features_scaler = \
     do_experiment(data=full_new_feat,
                   features=['start_month',
                             'start_hour',
                             'max_interval',
+                            'week_day',
                             'morning'],
                   Cs=np.logspace(-3, 1, 10),
                   idx_split=idx_split)
@@ -1493,10 +1749,10 @@ experiment['features'] = [
 
 rf_params = {
               'criterion': ['gini', 'entropy'],
-              'max_depth': [2, 5, 6, 10, 20],
-              'min_samples_leaf': [5, 10, 50],
+              'max_depth': [2, 5, 10],
+              'min_samples_leaf': [5, 10],
               'max_features': [0.7, 'sqrt', 'log2'],
-              'n_estimators': [10, 20, 50, 200], #number of trees, change it to 1000 for better results
+              'n_estimators': [20, 200], #number of trees, change it to 1000 for better results
               'random_state': [17]}
 
 
@@ -1512,7 +1768,8 @@ rf_grid, experiment, X_train, y_train, added_features_scaler = \
                     n_splits=5,
                     shuffle=True,
                     random_state=17),
-            random_state=17)
+            random_state=17,
+            n_jobs=2)
 
 rf_grid = experiment['clf_grid']
 experiment['submission_file'] = experiment_name + '.csv'
@@ -1534,3 +1791,165 @@ X_test = csr_matrix(hstack([full_sites_sparse[idx_split:, :],
                             added_features_scaler[idx_split:, :]]))
 y_test = rf_full.predict_proba(X_test)[:, 1]
 write_to_submission_file(y_test, experiment['submission_file'])
+
+
+
+
+
+# -------------------------------------------------------------------------
+#  ==>
+# -------------------------------------------------------------------------
+
+print(full_new_feat.groupby('week_day')['n_unique_sites'].describe())
+
+day_df = pd.DataFrame(index=train_df.index)
+day_df['target'] = train_df['target']
+day_df['week_day'] = \
+    train_df['time1'].apply(lambda ts: ts.weekday()).astype('int')
+sites = ['site%s' % i for i in range(1, 11)]
+day_df['n_unique_sites'] = \
+    train_df[train_df[sites] != 0][sites].apply(
+            lambda site: site[site != 0].nunique(),
+            axis=1).astype('float64')
+
+n_uniques_sites = ['n_uniques_sites_weekday_%s' % day for day in range(7)]
+for day in range(7):
+    day_df[n_uniques_sites[day]] = day_df[day_df['week_day']==day]['n_unique_sites'].astype('int')
+    day_df[n_uniques_sites[day]] = day_df[n_uniques_sites[0]].fillna(0)
+
+day_df.info()
+
+day_df[times] = train_df[times]
+
+def max_site_interval(r):
+    max_v = 0
+    for i in range(len(times) - 1):
+        diff = (r[times[i + 1]] - r[times[i]]) / np.timedelta64(1, 's')
+        max_v = max(max_v, diff)
+
+    return max_v
+
+for i in range(10-1):
+    day_df['interval%s' %i] = (day_df[times[i + 1]] - day_df[times[i]]) / np.timedelta64(1, 's')
+
+full_new_feat['max_interval'].describe()
+
+sns.barplot(x="week_day", y="max_interval", data=day_df[day_df['target']==0])
+plt.title('Intruder')
+sns.barplot(x="week_day", y="max_interval", data=day_df[day_df['target']==1])
+plt.title('Alice')
+
+day_df.groupby('target')['interval0'].describe()
+day_df.groupby('target')['interval1'].describe()
+day_df.groupby('target')['interval8'].describe()
+
+fig, ax = plt.subplots(figsize=(14, 6))
+sns.countplot(
+        x=day_df[day_df['target']==1]['max_interval'],
+#        hue=day_df['week_day'],
+        ax=ax)
+plt.title('Alice')
+
+fig, ax = plt.subplots(figsize=(14, 6))
+sns.countplot(
+        x=day_df['max_interval'],
+        hue=day_df['target'],
+        ax=ax)
+plt.title('Intruder')
+
+
+
+fig, ax = plt.subplots(figsize=(14, 6))
+sns.countplot(
+        x=day_df[day_df['target']==1][n_uniques_sites[6]],
+#        hue=day_df['week_day'],
+        ax=ax)
+plt.title('Alice')
+
+day_df['n_unique_sites_'] = \
+
+for day in range(7):
+    print('day={}: {}'.format(day, day_df[day_df['week_day']==day]['n_unique_sites'].mean()))
+
+for day in range(7):
+    day_df['n_unique_sitesper_day%s' % day] = \
+    print('day={}: {}'.format(day, day_df[(day_df['target']==0) & (day_df['week_day']==day)]['n_unique_sites'].mean()))
+
+print(day_df.groupby('week_day')['n_unique_sites'].describe())
+
+print('Intruder')
+for day in range(7):
+    print('day={}: {}'.format(day, day_df[(day_df['target']==0) & (day_df['week_day']==day)]['n_unique_sites'].mean()))
+
+print('Alice')
+for day in range(7):
+    print('day={}: {}'.format(day, day_df[(day_df['target']==1) & (day_df['week_day']==day)]['n_unique_sites'].mean()))
+
+print(day_df[day_df['target']==1]['n_unique_sites'].describe())
+
+fig, ax = plt.subplots(figsize=(14, 6))
+sns.countplot(
+        x=day_df[day_df['target']==1]['n_unique_sites'],
+        hue=day_df['week_day'],
+        ax=ax)
+plt.title('Alice')
+
+fig, ax = plt.subplots(figsize=(14, 6))
+sns.countplot(
+        x=day_df[day_df['target']==0]['n_unique_sites'],
+        hue=day_df['week_day'],
+        ax=ax)
+plt.title('Intruder')
+
+
+
+tt = pd.DataFrame({'day': ['1', '2', '3'], 'uniq_sites': [1, 10, 8], 'C': [1, 2, 3]})
+tt
+pd.get_dummies(tt, columns=['day', 'uniq_sites']).T
+
+
+experiment_name = 'prev_sites'
+
+full_new_feat['prev_sites'] = \
+    full_df['time1'].apply(lambda ts: ts.weekday()).astype('int')
+
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=['start_month',
+                            'start_hour',
+                            'week_day',
+                            'prev_sites',
+                            'morning'],
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
+
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
+
+
+
+
+
+
+
+
+
+# -------------------------------------------------------------------------
+#
+# -------------------------------------------------------------------------
