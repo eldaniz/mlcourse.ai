@@ -58,6 +58,7 @@ from sklearn.model_selection import StratifiedKFold, GridSearchCV
 from xgboost.sklearn import XGBClassifier
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import TfidfTransformer
 from tqdm import tqdm
 import os
 import pickle
@@ -1194,6 +1195,61 @@ make_submission(experiment['submission_file'],
                 )
 
 
+
+# -------------------------------------------------------------------------
+# 0.9728305894912781 ==> 0.94021
+# -------------------------------------------------------------------------
+experiment_name = 'intervals_week_day_tf_idf'
+
+
+vect = TfidfVectorizer().fit(
+        full_df.iloc[:idx_split][sites].fillna('-').astype('str').values.ravel())
+
+for site in sites:
+    full_sites_sparse = \
+        csr_matrix(
+                hstack([
+                        full_sites_sparse,
+                        vect.transform(
+                                full_df[site].fillna('-').astype('str'))]))
+
+
+features =['start_month',
+           'start_hour',
+           'week_day',
+           'morning']
+
+for v in intervals_columns:
+    features.append(v)
+
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=features,
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
+
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
+
+
+
+
 # -------------------------------------------------------------------------
 
 # In this part of the assignment, you have learned how to use sparse matrices, train logistic regression models, create new features and selected the best ones, learned why you need to scale features, and how to select hyperparameters. That's a lot!
@@ -1959,41 +2015,84 @@ make_submission(experiment['submission_file'],
 # -------------------------------------------------------------------------
 #   ==>
 # -------------------------------------------------------------------------
-experiment_name = 'intervals_week_day_tf_idf'
+experiment_name = 'intervals_week_day_sess_dur_per_site_tfidf_freq'
+
+vect = TfidfTransformer()
+vect = vect.fit(full_df.iloc[:idx_split][sites].fillna(0).astype('str'))
+#v = vect.transform(a[['s1', 's2']].fillna(0))
+
+#vect = TfidfVectorizer().fit(
+#        full_df.iloc[:idx_split][sites].fillna('-').astype('str').values.ravel())
 
 
-X_train[sites]
-full_df[sites]
+full_new_feat['min'] = full_df[times].min(axis=1)
+full_new_feat['max'] = full_df[times].max(axis=1)
+
+# Calculate sessions' duration in seconds
+full_new_feat['seconds'] = \
+    (full_new_feat['max'] - full_new_feat['min']) / np.timedelta64(1, 's')
+
+intervals_columns = ['interval%s' %i for i in range(10-1)]
+for i in range(10-1):
+    full_new_feat[intervals_columns[i]] = \
+    (full_df[times[i + 1]] - full_df[times[i]]) / np.timedelta64(1, 's')
+    full_new_feat[intervals_columns[i]].fillna(0, inplace=True)
+
+full_new_feat['sess_dur_per_site'] = \
+    full_new_feat['seconds']  / (1+full_new_feat['n_unique_sites'])
 
 
-# train sites
-#t1 = full_df.iloc[:idx_split][sites].astype('str').values
-#vect = TfidfVectorizer().fit(t1.ravel())
-
-#train_tfidf = vect.transform(full_df['site1'].astype('str'))
-
-#df1 = pd.DataFrame(train_tfidf.toarray(),
-#                   columns=vect.get_feature_names(),
-#                   index=full_df.index)
-
-#a = pd.concat([full_new_feat, df1], axis=1)
+def site_idf(site):
+    v = vect.vocabulary_.get(site)
+    return vect.idf_[vect.vocabulary_.get(site)]
 
 
-vect = TfidfVectorizer().fit(full_df.iloc[:idx_split][sites].astype('str').values.ravel())
-#df1 = pd.DataFrame(vect.transform(full_df['site1'].astype('str')).toarray(),
-#                   columns=vect.get_feature_names(),
-#                   index=full_df.index)
+sites_idf_columns = ['sites_idf%s' % i for i in range(1, 11)]
+for col in sites_idf_columns:
+    full_new_feat[col] = 0
 
-full_sites_sparse = \
-    csr_matrix(hstack([full_new_feat, vect.transform(full_df['site1'].astype('str'))]))
+full_new_feat[sites_idf_columns] = vect.transform(full_df[sites].fillna(0)).todense()
+#for i in range(10):
+#    full_new_feat[sites_idf_columns[i]] = full_df[sites[i]].apply(site_idf)
+#for i in range(10):
+#    full_new_feat[sites_idf_columns[i]] = full_new_feat[sites_idf_columns[i]].fillna(0)
 
-
-
-
-
-
+full_new_feat.info()
 
 
+features =['start_month',
+           'start_hour',
+           'week_day',
+           'sess_dur_per_site',
+           'morning']
+
+for v in sites_idf_columns:
+    features.append(v)
+
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=features,
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
+
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
 
 
 
@@ -2001,24 +2100,41 @@ full_sites_sparse = \
 
 
 
-#t1 = full_df.iloc[:idx_split][sites].astype('str').values
-#vect = TfidfVectorizer().fit(t1.ravel())
 
-a = pd.DataFrame(data=[[11, 101, 11],
+a = pd.DataFrame(data=[[11, 101, np.nan],
                        [21, 102, 11],
                        [21, 102, 41],
                        [21, 102, 11],
                        [21, 102, 31],
-                       [11, 103, 33],
+                       [11, 103, 11],
                        [41, 104, 43]],
     columns=['s1', 't', 's2'])
 
 #a['sites_in_str'] = a['s1'].astype('str') + ' ' + a['s2'].astype('str')
-t1 = a.iloc[:4][['s1', 's2']].astype('str').values
+t1 = a.iloc[:4][['s1', 's2']].fillna(0).astype('str')
 #t1 = a.iloc[:6][['sites_in_str']].astype('str').values
-vect = TfidfVectorizer().fit(t1.ravel())
+vect = TfidfTransformer()
+vect = vect.fit(t1)
+v = vect.transform(a[['s1', 's2']].fillna(0))
+v.toarray()
+a['tf1'] = 0
+a['tf2'] = 0
+vv = vect.transform(a[['s1', 's2']].fillna(0))
 
-vect.vocabulary_.get('21')
+a[['tf1', 'tf2']] = vect.transform(a[['s1', 's2']].fillna(0)).todense()
+
+
+df___ = (1 / pd.DataFrame([vect.idf_], columns=vect.get_feature_names()))
+vect.idf_[vect.vocabulary_.get('41')]
+
+def site_idf(site):
+    print(type(site))
+    v = vect.vocabulary_.get(site)
+    print(type(v))
+    return vect.idf_[vect.vocabulary_.get(site)]
+
+vect.vocabulary_.get(a['s1'])
+a['tf1'] = a['s1'].astype('str').apply(site_idf)
 
 def tt(x):
     print(type(x))
@@ -2057,73 +2173,4 @@ vect = \
             np.vstack(full_df[:idx_split][sites].astype('str').values).ravel())
 print('Vocabulary len:', len(vect.get_feature_names()))
 print('Longest word:', max(vect.vocabulary_, key=len))
-
-
-sites_ifidf_columns = ['sites_tfidf%s' %i for i in range(len(sites))]
-
-
-t0 = full_df.iloc[:1][sites].astype('str')
-vect.transform(t0.values.ravel()).nonzero()
-
-t1 = full_df[sites].astype('str')
-vect.transform(t1.values.ravel()).nonzero()
-
-
-full_new_feat[sites_ifidf_columns] = vect.transform(full_df[sites])
-
-
-full_new_feat[sites_ifidf_columns]
-X_train_vectorized = vect.transform(X_train)
-
-
-
-
-
-
-
-#full_new_feat['weekend_day'] = \
-#    full_df['time1'].apply(lambda ts: ts.weekday() in [5, 6]).astype('int')
-
-intervals_columns = ['interval%s' %i for i in range(10-1)]
-for i in range(10-1):
-    full_new_feat[intervals_columns[i]] = \
-    (full_df[times[i + 1]] - full_df[times[i]]) / np.timedelta64(1, 's')
-    full_new_feat[intervals_columns[i]].fillna(0, inplace=True)
-
-features =['start_month',
-           'start_hour',
-           'week_day',
-           'morning']
-
-for v in intervals_columns:
-    features.append(v)
-
-experiment, X_train, y_train, added_features_scaler = \
-    do_experiment(data=full_new_feat,
-                  features=features,
-                  Cs=np.logspace(-3, 1, 10),
-                  idx_split=idx_split)
-
-print('best score: {}\ndefault score:{}'.
-      format(
-              experiment['score'],
-              experiment['score_C_default']))
-round(float(experiment['optimal_C']), 2)
-
-experiment['submission_file'] = experiment_name + '.csv'
-experiments[experiment_name] = experiment
-
-[(key, experiments[key]['score']) for key in experiments.keys()]
-
-make_submission(experiment['submission_file'],
-                X_train,
-                y_train,
-                added_features_scaler,
-                experiments[experiment_name]['optimal_C'],
-                idx_split=idx_split
-                )
-
-
-
-
 
