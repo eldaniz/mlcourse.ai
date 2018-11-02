@@ -57,6 +57,7 @@ import seaborn as sns
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
 from xgboost.sklearn import XGBClassifier
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 import os
 import pickle
@@ -1953,3 +1954,176 @@ make_submission(experiment['submission_file'],
 # -------------------------------------------------------------------------
 #
 # -------------------------------------------------------------------------
+
+
+# -------------------------------------------------------------------------
+#   ==>
+# -------------------------------------------------------------------------
+experiment_name = 'intervals_week_day_tf_idf'
+
+
+X_train[sites]
+full_df[sites]
+
+
+# train sites
+#t1 = full_df.iloc[:idx_split][sites].astype('str').values
+#vect = TfidfVectorizer().fit(t1.ravel())
+
+#train_tfidf = vect.transform(full_df['site1'].astype('str'))
+
+#df1 = pd.DataFrame(train_tfidf.toarray(),
+#                   columns=vect.get_feature_names(),
+#                   index=full_df.index)
+
+#a = pd.concat([full_new_feat, df1], axis=1)
+
+
+vect = TfidfVectorizer().fit(full_df.iloc[:idx_split][sites].astype('str').values.ravel())
+#df1 = pd.DataFrame(vect.transform(full_df['site1'].astype('str')).toarray(),
+#                   columns=vect.get_feature_names(),
+#                   index=full_df.index)
+
+full_sites_sparse = \
+    csr_matrix(hstack([full_new_feat, vect.transform(full_df['site1'].astype('str'))]))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#t1 = full_df.iloc[:idx_split][sites].astype('str').values
+#vect = TfidfVectorizer().fit(t1.ravel())
+
+a = pd.DataFrame(data=[[11, 101, 11],
+                       [21, 102, 11],
+                       [21, 102, 41],
+                       [21, 102, 11],
+                       [21, 102, 31],
+                       [11, 103, 33],
+                       [41, 104, 43]],
+    columns=['s1', 't', 's2'])
+
+#a['sites_in_str'] = a['s1'].astype('str') + ' ' + a['s2'].astype('str')
+t1 = a.iloc[:4][['s1', 's2']].astype('str').values
+#t1 = a.iloc[:6][['sites_in_str']].astype('str').values
+vect = TfidfVectorizer().fit(t1.ravel())
+
+vect.vocabulary_.get('21')
+
+def tt(x):
+    print(type(x))
+    v = vect.transform([x])#vocabulary_.get(x)
+    print(type(v))
+    return v.ravel()
+    return int(v) + 1 if v is not None else 0
+
+
+#a0.astype('str').apply(lambda x : vect.vocabulary_.get(x))
+
+v1 = vect.transform(a['s2'].astype('str'))#.reshape(7*2, 1)
+v1.todense()
+df1 = pd.DataFrame(v1.toarray(), columns=vect.get_feature_names())
+b = pd.concat([a, df1], axis=1)
+b
+
+na = csr_matrix(hstack([a, v1]))
+na.todense()
+
+
+
+vect.transform(a['s2'].astype('str')).reshape(7*2, 1).todense()
+vect.transform(a['t'].astype('str')).todense()
+a['tf1'] = vect.transform(a['s1'].astype('str'))
+a['tf2'] = a['s2'].astype('str').apply(tt)
+
+tfidf_vect_len = len(vect.get_feature_names())
+vect.transform(['11']).todense()
+
+
+np.vstack(full_df[:idx_split][sites].astype('str').values).ravel())
+
+vect = \
+    TfidfVectorizer().fit(
+            np.vstack(full_df[:idx_split][sites].astype('str').values).ravel())
+print('Vocabulary len:', len(vect.get_feature_names()))
+print('Longest word:', max(vect.vocabulary_, key=len))
+
+
+sites_ifidf_columns = ['sites_tfidf%s' %i for i in range(len(sites))]
+
+
+t0 = full_df.iloc[:1][sites].astype('str')
+vect.transform(t0.values.ravel()).nonzero()
+
+t1 = full_df[sites].astype('str')
+vect.transform(t1.values.ravel()).nonzero()
+
+
+full_new_feat[sites_ifidf_columns] = vect.transform(full_df[sites])
+
+
+full_new_feat[sites_ifidf_columns]
+X_train_vectorized = vect.transform(X_train)
+
+
+
+
+
+
+
+#full_new_feat['weekend_day'] = \
+#    full_df['time1'].apply(lambda ts: ts.weekday() in [5, 6]).astype('int')
+
+intervals_columns = ['interval%s' %i for i in range(10-1)]
+for i in range(10-1):
+    full_new_feat[intervals_columns[i]] = \
+    (full_df[times[i + 1]] - full_df[times[i]]) / np.timedelta64(1, 's')
+    full_new_feat[intervals_columns[i]].fillna(0, inplace=True)
+
+features =['start_month',
+           'start_hour',
+           'week_day',
+           'morning']
+
+for v in intervals_columns:
+    features.append(v)
+
+experiment, X_train, y_train, added_features_scaler = \
+    do_experiment(data=full_new_feat,
+                  features=features,
+                  Cs=np.logspace(-3, 1, 10),
+                  idx_split=idx_split)
+
+print('best score: {}\ndefault score:{}'.
+      format(
+              experiment['score'],
+              experiment['score_C_default']))
+round(float(experiment['optimal_C']), 2)
+
+experiment['submission_file'] = experiment_name + '.csv'
+experiments[experiment_name] = experiment
+
+[(key, experiments[key]['score']) for key in experiments.keys()]
+
+make_submission(experiment['submission_file'],
+                X_train,
+                y_train,
+                added_features_scaler,
+                experiments[experiment_name]['optimal_C'],
+                idx_split=idx_split
+                )
+
+
+
+
+
