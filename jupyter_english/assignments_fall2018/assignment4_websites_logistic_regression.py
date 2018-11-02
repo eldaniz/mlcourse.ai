@@ -56,6 +56,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 from sklearn.model_selection import StratifiedKFold, GridSearchCV
 from xgboost.sklearn import XGBClassifier
+from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_extraction.text import TfidfTransformer
@@ -2087,61 +2088,27 @@ make_submission(experiment['submission_file'],
 
 
 # -------------------------------------------------------------------------
-# 0.97263298334855008 ==> 0.94004
+# 0.9728305894912781 ==> 0.94021
 # -------------------------------------------------------------------------
-experiment_name = 'intervalsadded_week_day_sess_dur_per_site_tfidf_freq'
-
-vect = TfidfTransformer()
-vect = vect.fit(full_df.iloc[:idx_split][sites].fillna(0).astype('str'))
-#v = vect.transform(a[['s1', 's2']].fillna(0))
-
-#vect = TfidfVectorizer().fit(
-#        full_df.iloc[:idx_split][sites].fillna('-').astype('str').values.ravel())
+experiment_name = 'intervals_week_day_tf_idf_xgd'
 
 
-full_new_feat['min'] = full_df[times].min(axis=1)
-full_new_feat['max'] = full_df[times].max(axis=1)
+vect = TfidfVectorizer().fit(
+        full_df.iloc[:idx_split][sites].fillna('-').astype('str').values.ravel())
 
-# Calculate sessions' duration in seconds
-full_new_feat['seconds'] = \
-    (full_new_feat['max'] - full_new_feat['min']) / np.timedelta64(1, 's')
+for site in sites:
+    full_sites_sparse = \
+        csr_matrix(
+                hstack([
+                        full_sites_sparse,
+                        vect.transform(
+                                full_df[site].fillna('-').astype('str'))]))
 
-intervals_columns = ['interval%s' %i for i in range(10-1)]
-for i in range(10-1):
-    full_new_feat[intervals_columns[i]] = \
-    (full_df[times[i + 1]] - full_df[times[i]]) / np.timedelta64(1, 's')
-    full_new_feat[intervals_columns[i]].fillna(0, inplace=True)
-
-full_new_feat['sess_dur_per_site'] = \
-    full_new_feat['seconds']  / (1+full_new_feat['n_unique_sites'])
-
-
-def site_idf(site):
-    v = vect.vocabulary_.get(site)
-    return vect.idf_[vect.vocabulary_.get(site)]
-
-
-sites_idf_columns = ['sites_idf%s' % i for i in range(1, 11)]
-for col in sites_idf_columns:
-    full_new_feat[col] = 0
-
-full_new_feat[sites_idf_columns] = vect.transform(full_df[sites].fillna(0)).todense()
 
 features =['start_month',
            'start_hour',
            'week_day',
-           'sess_dur_per_site',
            'morning']
-
-for v in sites_idf_columns:
-    features.append(v)
-
-
-intervals_columns = ['interval%s' %i for i in range(10-1)]
-for i in range(10-1):
-    full_new_feat[intervals_columns[i]] = \
-    (full_df[times[i + 1]] - full_df[times[i]]) / np.timedelta64(1, 's')
-    full_new_feat[intervals_columns[i]].fillna(0, inplace=True)
 
 for v in intervals_columns:
     features.append(v)
@@ -2170,8 +2137,6 @@ make_submission(experiment['submission_file'],
                 experiments[experiment_name]['optimal_C'],
                 idx_split=idx_split
                 )
-
-
 
 
 
