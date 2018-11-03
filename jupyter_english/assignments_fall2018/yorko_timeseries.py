@@ -14,6 +14,7 @@ from sklearn.model_selection import TimeSeriesSplit, cross_val_score, GridSearch
 from sklearn.metrics import roc_auc_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import StandardScaler
 
 # A helper function for writing predictions to a file
 def write_to_submission_file(predicted_labels, out_file,
@@ -87,9 +88,16 @@ logit_test_pred = logit.predict_proba(X_test)[:, 1]
 write_to_submission_file(logit_test_pred, 'subm1.csv') # 0.91288
 
 
+
+experiments_ts = {}
+
+
 # -------------------------------------------------------------------------
 # ts 0.916380752986 {'C': 0.59948425031894093} + week_day ==> 0.94696
 # -------------------------------------------------------------------------
+experiment_name = 'def_ts_week_day'
+
+
 def add_features(df, X_sparse):
     hour = df['time1'].apply(lambda ts: ts.hour)
     morning = ((hour >= 7) & (hour <= 11)).astype('int')
@@ -122,7 +130,7 @@ cv_scores = cross_val_score(logit,
                             scoring='roc_auc',
                             n_jobs=-1)
 
-print(cv_scores, cv_scores.mean())
+print(cv_scores, cv_scores.mean())  # 0.91559979 ???
 
 
 logit.fit(X_train_new, y_train)
@@ -150,15 +158,31 @@ logit_grid_searcher = GridSearchCV(
 logit_grid_searcher.fit(X_train_new, y_train)
 
 
+# -week_day: (0.9173763958236849, {'C': 0.21544346900318834}) ==> 0.94242
+# +week_day: 0.916380752986 {'C': 0.59948425031894093} ==> 0.94696
 print(logit_grid_searcher.best_score_,
-      logit_grid_searcher.best_params_)  # (0.9173763958236849, {'C': 0.21544346900318834})
+      logit_grid_searcher.best_params_)
+
+
+experiment = {}
+experiment['logit_grid_searcher.best_score_'] = logit_grid_searcher.best_score_
+experiment['logit_grid_searcher.best_params_'] = logit_grid_searcher.best_params_
+experiment['cv_scores.best_params_'] = cv_scores
+experiment['cv_scores.mean'] = cv_scores.mean()
+experiment['submit_file'] = 'subm3.csv'
+
+experiments_ts[experiment_name] = experiment
 
 
 logit_test_pred3 = logit_grid_searcher.predict_proba(X_test_new)[:, 1]
-write_to_submission_file(logit_test_pred3, 'subm3.csv')  # 0.94242
+write_to_submission_file(logit_test_pred3, experiment['submit_file'])  # weekday=0.94696 (def:0.94242)
 
 # -------------------------------------------------------------------------
+# h+sm+m+ev+d+tfidf (0.918710014062 {'C': 0.077426368268112694}) Mean score: 0.9124386290425853
+# ==> 0.94843
 # -------------------------------------------------------------------------
+experiment_name = 'def_ts_week_day_tfidf'
+
 
 def add_features_tfidf(df, X_sparse, vectorizer):
     hour = df['time1'].apply(lambda ts: ts.hour)
@@ -167,48 +191,229 @@ def add_features_tfidf(df, X_sparse, vectorizer):
     evening = ((hour >= 19) & (hour <= 23)).astype('int')
     night = ((hour >= 0) & (hour <= 6)).astype('int')
 
-    week_day = df['time1'].apply(lambda ts: ts.weekday()).astype('int')
+    start_month = StandardScaler().fit_transform(
+            df['time1'].apply(
+                    lambda ts: 100 * ts.year + ts.month).astype('float64').values.reshape(-1, 1))
+    week_day = StandardScaler().fit_transform(
+            df['time1'].apply(lambda ts: ts.weekday()).astype('float64').values.reshape(-1, 1))
 
     X = hstack([X_sparse,
+                hour.values.reshape(-1, 1),
+                start_month,#.values.reshape(-1, 1),
                 morning.values.reshape(-1, 1),
                 day.values.reshape(-1, 1),
                 evening.values.reshape(-1, 1),
                 night.values.reshape(-1, 1),
-                week_day.values.reshape(-1, 1)
+                week_day#.values.reshape(-1, 1)
                 ])
 
     for site in sites:
         X = hstack([X,
-                    vectorizer.transform(df[site].fillna(0).astype('str'))])
+                    vectorizer.transform(df[site].astype('str'))
+                    ])
 
     return X
 
 
-
 # vectorizer TF IDF
-vect = TfidfVectorizer().fit(train_df[sites].fillna(0).astype('str').values.ravel())
+vectorizer = TfidfVectorizer().\
+    fit(train_df[sites].fillna(0).astype('str').values.ravel())
 
-# times & week day _+ TF IDF
-X_train_new = add_features_tfidf(train_df.fillna(0), X_train, vect)
-X_test_new = add_features_tfidf(test_df.fillna(0), X_test, vect)
+
+X_train_new = add_features_tfidf(train_df.fillna(0), X_train, vectorizer)
+X_test_new = add_features_tfidf(test_df.fillna(0), X_test, vectorizer)
+
+# def:                      0.9117890204757252
+# min_df=3, max_df=0.3:     0.9117890204757252
+# min_df=0.1, max_df=0.9:   0.913996846420335
+# min_df=0.03, max_df=0.8:  0.9150225892335152
+# min_df=0.03, max_df=0.5:  0.9150225892335152
+# min_df=0.03:              0.9150225892335152
+# min_df=0.05, max_df=0.8:  error
+# min_df=0.04, max_df=0.8   0.9152263080988643 (grid_cv: 0.916001944198 {'C': 0.59948425031894093})
+# max_df=0.3:               0.9117890204757252
+# min_df=0.02:              0.9138372280401713 (0.915780079137 {'C': 0.59948425031894093})
+
 print(X_train_new.shape, X_test_new.shape)
 
-#f = X_train
-#
-#for site in sites:
-#    vv = vect.transform(train_df[site].fillna(0).astype('str'))
-#    print(f.shape)
-#    f = hstack([f, vv])
-#    print(f.shape)
-#print(f.shape)
+
+logit = LogisticRegression(C=1, random_state=17)
+cv_scores = cross_val_score(logit,
+                            X_train_new,
+                            y_train,
+                            cv=time_split,
+                            scoring='roc_auc',
+                            n_jobs=-1)
+
+print(cv_scores)
+print('Mean score: {}'.format(cv_scores.mean()))
+
+
+c_values = np.logspace(-2, 2, 10)
+
+logit_grid_searcher = GridSearchCV(
+        estimator=logit,
+        param_grid={'C': c_values},
+        scoring='roc_auc',
+        n_jobs=-1,
+        cv=time_split,
+        verbose=1)
+
+logit_grid_searcher.fit(X_train_new, y_train)
+
+
+print(logit_grid_searcher.best_score_,
+      logit_grid_searcher.best_params_)
+
+
+experiment = {}
+experiment['logit_grid_searcher.best_score_'] = logit_grid_searcher.best_score_
+experiment['logit_grid_searcher.best_params_'] = logit_grid_searcher.best_params_
+experiment['cv_scores.best_params_'] = cv_scores
+experiment['cv_scores.mean'] = cv_scores.mean()
+experiment['submit_file'] = 'subm4.csv'
+
+experiments_ts[experiment_name] = experiment
+
+
+logit_test_pred4 = logit_grid_searcher.predict_proba(X_test_new)[:, 1]
+write_to_submission_file(logit_test_pred4, experiment['submit_file'])
 
 
 
 
 
+# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------
+experiment_name = 'ts_tfidf'
 
 
+def add_features_tfidf2(df,
+                        X_sparse,
+                        vectorizer,
+                        week_day_scaler,
+                        start_month_scaler
+                        ):
+    hour = df['time1'].apply(lambda ts: ts.hour)
+    morning = ((hour >= 7) & (hour <= 11)).astype('int')
+    day = ((hour >= 12) & (hour <= 18)).astype('int')
+    evening = ((hour >= 19) & (hour <= 23)).astype('int')
+    night = ((hour >= 0) & (hour <= 6)).astype('int')
+
+#weekday = df['time1'].apply(lambda ts: ts.dayofweek)
+#df['weekday'] = df['time1'].apply(lambda ts: ts.dayofweek)
+#df['weekend'] = ((weekday >= 5) & (weekday <= 6)).astype('int')
+#df['weekdays'] = (weekday <= 4).astype('int')
+#    years = df['time1'].apply(lambda ts: ts.year)
+    start_month = start_month_scaler.transform(
+            df['time1'].apply(
+                    lambda ts: 100 * ts.year + ts.month).astype('float64').values.reshape(-1, 1))
+
+    week_day = week_day_scaler.transform(
+            df['time1'].apply(lambda ts: ts.weekday()).astype('float64').values.reshape(-1, 1)
+            )
+
+    X = hstack([X_sparse,
+                hour.values.reshape(-1, 1),
+#                years.values.reshape(-1, 1),
+                start_month,#.values.reshape(-1, 1),
+                morning.values.reshape(-1, 1),
+                day.values.reshape(-1, 1),
+                evening.values.reshape(-1, 1),
+                night.values.reshape(-1, 1),
+                week_day#.values.reshape(-1, 1)
+                ])
+
+    for site in sites:
+        X = hstack([X,
+                    vectorizer.transform(df[site].astype('str'))
+                    ])
+
+    return X
+
+#tt = train_df['time1'].apply(lambda ts: 100 * ts.year + ts.month).astype('float64')
+#start_month = StandardScaler().fit_transform(tt.values.reshape(-1,1))
+#            train_df['time1'].apply(lambda ts: 100 * ts.year + ts.month).astype('int')
+
+week_day_scaler = StandardScaler().fit(
+        train_df.fillna(0)['time1'].apply(
+                lambda ts: ts.weekday()).astype('float64').values.reshape(-1, 1))
+
+start_month_scaler =StandardScaler().fit(
+            train_df.fillna(0)['time1'].apply(
+                    lambda ts: 100 * ts.year + ts.month).astype('float64').values.reshape(-1, 1))
+# vectorizer TF IDF
+vectorizer = TfidfVectorizer().\
+    fit(train_df[sites].fillna(0).astype('str').values.ravel())
+
+#vv = vectorizer.transform(train_df['site1'].fillna(0).astype('str'))
+
+# times & week day _+ TF IDF
+
+X_train_new = add_features_tfidf2(train_df.fillna(0),
+                                 X_train,
+                                 vectorizer,
+                                 week_day_scaler=week_day_scaler,
+                                 start_month_scaler=start_month_scaler)
+X_test_new = add_features_tfidf2(test_df.fillna(0),
+                                X_test,
+                                vectorizer,
+                                week_day_scaler=week_day_scaler,
+                                start_month_scaler=start_month_scaler)
+
+# def:                      0.9117890204757252
+# min_df=3, max_df=0.3:     0.9117890204757252
+# min_df=0.1, max_df=0.9:   0.913996846420335
+# min_df=0.03, max_df=0.8:  0.9150225892335152
+# min_df=0.03, max_df=0.5:  0.9150225892335152
+# min_df=0.03:              0.9150225892335152
+# min_df=0.05, max_df=0.8:  error
+# min_df=0.04, max_df=0.8   0.9152263080988643 (grid_cv: 0.916001944198 {'C': 0.59948425031894093})
+# max_df=0.3:               0.9117890204757252
+# min_df=0.02:              0.9138372280401713 (0.915780079137 {'C': 0.59948425031894093})
+
+print(X_train_new.shape, X_test_new.shape)
 
 
+logit = LogisticRegression(C=1, random_state=17)
+cv_scores = cross_val_score(logit,
+                            X_train_new,
+                            y_train,
+                            cv=time_split,
+                            scoring='roc_auc',
+                            n_jobs=-1)
 
+print(cv_scores)
+print('Mean score: {}'.format(cv_scores.mean()))
+
+
+c_values = np.logspace(-2, 2, 10)
+
+logit_grid_searcher = GridSearchCV(
+        estimator=logit,
+        param_grid={'C': c_values},
+        scoring='roc_auc',
+        n_jobs=-1,
+        cv=time_split,
+        verbose=1)
+
+logit_grid_searcher.fit(X_train_new, y_train)
+
+
+print(logit_grid_searcher.best_score_,
+      logit_grid_searcher.best_params_)
+
+
+experiment = {}
+experiment['logit_grid_searcher.best_score_'] = logit_grid_searcher.best_score_
+experiment['logit_grid_searcher.best_params_'] = logit_grid_searcher.best_params_
+experiment['cv_scores.best_params_'] = cv_scores
+experiment['cv_scores.mean'] = cv_scores.mean()
+experiment['submit_file'] = experiment_name+ '.csv'
+
+experiments_ts[experiment_name] = experiment
+
+
+logit_test_pred4 = logit_grid_searcher.predict_proba(X_test_new)[:, 1]
+write_to_submission_file(logit_test_pred4, experiment['submit_file'])
 
