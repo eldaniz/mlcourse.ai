@@ -100,16 +100,17 @@ def do_experiment(data, features, Cs, idx_split, solver='liblinear'):
     experiment['features'] = features
 
     added_features_scaler = StandardScaler().fit_transform(data[features])
+
     X_train = csr_matrix(hstack([full_sites_sparse[:idx_split, :],
                                  added_features_scaler[:idx_split, :]]))
 
     # Capture the quality with default parameters
-    experiment['score_C_default'] = get_auc_lr_valid(X_train, y_train, solver=solver)
+    experiment['score_C_default'] = get_auc_lr_valid(X_train, y_train, cv=cv, solver=solver)
     print(experiment['score_C_default'])
 
     scores = []
     for C in tqdm(Cs):
-        scores.append(get_auc_lr_valid(X_train, y_train, C=C, solver=solver))
+        scores.append(get_auc_lr_valid(X_train, y_train, cv=cv, C=C, solver=solver))
 
     experiment['all_Cs'] = Cs
     experiment['all_scores'] = scores
@@ -137,6 +138,7 @@ def do_experiment_gridCV(clf,
                          data,
                          features,
                          idx_split,
+                         vectorizer,
                          scoring='auc_roc',
                          cv=StratifiedKFold(
                                  n_splits=5,
@@ -153,6 +155,10 @@ def do_experiment_gridCV(clf,
     X_train = csr_matrix(hstack([full_sites_sparse[:idx_split, :],
                                  added_features_scaler[:idx_split, :]]))
 
+    for site in sites:
+        X_train = hstack([X_train,
+                    vectorizer.transform(data[site].astype('str'))
+                    ])
     clf_grid = GridSearchCV(
             clf,
             grid_params,
@@ -2217,4 +2223,208 @@ vect = \
             np.vstack(full_df[:idx_split][sites].astype('str').values).ravel())
 print('Vocabulary len:', len(vect.get_feature_names()))
 print('Longest word:', max(vect.vocabulary_, key=len))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+from sklearn.model_selection import TimeSeriesSplit, cross_val_score, GridSearchCV
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+
+
+# Select the training set from the united dataframe (where we have the answers)
+X_train = full_sites_sparse[:idx_split, :]
+
+# Make a prediction for test data set
+X_test = full_sites_sparse[idx_split:, :]
+
+
+time_split = TimeSeriesSplit(n_splits=10)
+
+[(el[0].shape, el[1].shape) for el in time_split.split(X_train)]
+
+times = ['time%s' % i for i in range(1, 11)]
+train_df[times] = train_df[times].apply(pd.to_datetime)
+test_df[times] = test_df[times].apply(pd.to_datetime)
+
+train_df = train_df.sort_values(by='time1')
+
+train_new_feat = train_df
+# -------------------------------------------------------------------------
+#   ==>
+# -------------------------------------------------------------------------
+experiment_name = 'intervals_week_day_ts_tfidf'
+
+#full_new_feat['weekend_day'] = \
+#    full_df['time1'].apply(lambda ts: ts.weekday() in [5, 6]).astype('int')
+# vectorizer TF IDF
+vectorizer = TfidfVectorizer(ngram_range=(1, 3)).\
+    fit(train_new_feat[sites].fillna(0).astype('str').values.ravel())
+
+def add_features(df,
+                 X_sparse,
+                 vectorizer):
+    hour = df['time1'].apply(lambda ts: ts.hour)
+    morning = ((hour >= 7) & (hour <= 11)).astype('int')
+    day = ((hour >= 12) & (hour <= 18)).astype('int')
+    evening = ((hour >= 19) & (hour <= 23)).astype('int')
+    night = ((hour >= 0) & (hour <= 6)).astype('int')
+
+    week_day = df['time1'].apply(lambda ts: ts.weekday()).astype('int')
+
+    X = hstack([X_sparse,
+                morning.values.reshape(-1, 1),
+                day.values.reshape(-1, 1),
+                evening.values.reshape(-1, 1),
+                night.values.reshape(-1, 1),
+                week_day.values.reshape(-1, 1)
+                ])
+
+    for site in sites:
+        X = hstack([X,
+                    vectorizer.transform(df[site].astype('str'))
+                    ])
+    return X
+
+def add_features_tfidf(df,
+                        X_sparse,
+                        vectorizer,
+                        week_day_scaler,
+                        start_month_scaler,
+                        month_scaler,
+                        years_scaler
+#                        max_interval_scaler
+                        ):
+    hour = df['time1'].apply(lambda ts: ts.hour)
+    morning = ((hour >= 7) & (hour <= 11)).astype('int')
+    day = ((hour >= 12) & (hour <= 18)).astype('int')
+    evening = ((hour >= 19) & (hour <= 23)).astype('int')
+    night = ((hour >= 0) & (hour <= 6)).astype('int')
+
+#weekday = df['time1'].apply(lambda ts: ts.dayofweek)
+#df['weekday'] = df['time1'].apply(lambda ts: ts.dayofweek)
+#df['weekend'] = ((weekday >= 5) & (weekday <= 6)).astype('int')
+#df['weekdays'] = (weekday <= 4).astype('int')
+#    years = df['time1'].apply(lambda ts: ts.year)
+
+    start_month = start_month_scaler.transform(
+            df['time1'].apply(
+                    lambda ts: 100 * ts.year + ts.month).astype('float64').values.reshape(-1, 1))
+
+    week_day = week_day_scaler.transform(
+            df['time1'].apply(lambda ts: ts.weekday()).astype('float64').values.reshape(-1, 1)
+            )
+
+#    month = month_scaler.transform(
+#            df['time1'].apply(lambda ts: ts.month).astype('float64').values.reshape(-1, 1))
+
+    years = years_scaler.transform(
+            df['time1'].apply(lambda ts: ts.year).astype('int').values.reshape(-1, 1))
+
+#    max_interval = df[times].apply(mean_site_interval, axis=1)
+
+    X = hstack([X_sparse,
+                hour.values.reshape(-1, 1),
+                start_month,#.values.reshape(-1, 1),
+                morning.values.reshape(-1, 1),
+                day.values.reshape(-1, 1),
+                evening.values.reshape(-1, 1),
+                night.values.reshape(-1, 1),
+                week_day,
+#                month,
+                years
+                ])
+
+    for site in sites:
+        X = hstack([X,
+                    vectorizer.transform(df[site].astype('str'))
+                    ])
+
+    return X
+
+
+start_month = StandardScaler().fit_transform(
+        train_df['time1'].apply(
+                lambda ts: 100 * ts.year + ts.month).astype('float64').values.reshape(-1, 1))
+
+# times & week day
+X_train_new = add_features(train_df.fillna(0),
+                                 X_train,
+                                 vectorizer=vectorizer)
+
+X_test_new = add_features(test_df.fillna(0),
+                                X_test,
+                                vectorizer=vectorizer)
+
+print(X_train_new.shape, X_test_new.shape)
+
+logit = LogisticRegression(C=1, random_state=17)
+cv_scores = cross_val_score(logit,
+                            X_train_new,
+                            y_train,
+                            cv=time_split,
+                            scoring='roc_auc',
+                            n_jobs=-1)
+
+print(cv_scores)
+print('Mean score: {}'.format(cv_scores.mean()))
+
+
+c_values = np.logspace(-2, 2, 10)
+
+logit_grid_searcher = GridSearchCV(
+        estimator=logit,
+        param_grid={'C': c_values},
+        scoring='roc_auc',
+        n_jobs=-1,
+        cv=time_split,
+        verbose=1)
+
+logit_grid_searcher.fit(X_train_new, y_train)
+
+
+print(logit_grid_searcher.best_score_,
+      logit_grid_searcher.best_params_)
+
+
+experiment = {}
+experiment['logit_grid_searcher.best_score_'] = logit_grid_searcher.best_score_
+experiment['logit_grid_searcher.best_params_'] = logit_grid_searcher.best_params_
+experiment['cv_scores.best_params_'] = cv_scores
+experiment['cv_scores.mean'] = cv_scores.mean()
+experiment['submit_file'] = experiment_name + '.csv'
+
+experiments_ts[experiment_name] = experiment
+
+
+logit_test_pred4 = logit_grid_searcher.predict_proba(X_test_new)[:, 1]
+write_to_submission_file(logit_test_pred4, experiment['submit_file'])
+
+
+
+
+
+
 
