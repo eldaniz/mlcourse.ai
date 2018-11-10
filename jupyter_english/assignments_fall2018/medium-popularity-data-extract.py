@@ -31,6 +31,7 @@ from sklearn.pipeline import Pipeline, FeatureUnion
 from sklearn.base import BaseEstimator, TransformerMixin
 from nltk.stem import PorterStemmer
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.linear_model import RidgeCV
 
 from sklearn.linear_model import Ridge
 
@@ -281,6 +282,43 @@ def extract_title_as_string(X):
     return X['title']
 
 
+def feature_weekday(X):
+    return pd.DataFrame(X['published'].dt.weekday)
+
+
+def feature_hour(X):
+    return pd.DataFrame(X['published'].dt.hour)
+
+
+def feature_month(X):
+    return pd.DataFrame(X['published'].dt.month)
+
+
+# yearfeature from A4
+def feature_year(X):
+    return pd.DataFrame(X['published'].dt.year)
+
+
+# Month Q
+def feature_month_q1(X):
+    return pd.DataFrame(X['published'].dt.month.isin([1, 2, 3]))
+
+
+# Month Q
+def feature_month_q2(X):
+    return pd.DataFrame(X['published'].dt.month.isin([4, 5, 6]))
+
+
+# Month Q
+def feature_month_q3(X):
+    return pd.DataFrame(X['published'].dt.month.isin([7, 8, 9]))
+
+
+# Month Q
+def feature_month_q4(X):
+    return pd.DataFrame(X['published'].dt.month.isin([10, 11, 12]))
+
+
 def stem_tokenize(text):
     tokens = nltk.word_tokenize(text)
     stems = []
@@ -289,11 +327,11 @@ def stem_tokenize(text):
     return stems
 
 
-
 class StemmedCountVectorizer(TfidfVectorizer):
     def build_analyzer(self):
         analyzer = super(StemmedCountVectorizer, self).build_analyzer()
         return lambda doc: ([stemmer.stem(w) for w in analyzer(doc)])
+
 
 # --------------------------------------------------------------------------
 transform_pipeline = Pipeline([
@@ -306,12 +344,54 @@ transform_pipeline = Pipeline([
             ('shape', ShapeSaver())
         ])),
 #
-#        ('tags_tfidf', Pipeline([
-#            ('extract', FunctionTransformer(extract_tags_as_string, validate=False)),
-#            ('count', TfidfVectorizer(max_features=25000)),
-##            ("tfidf", TfidfTransformer()),
+#        ('weekday_cat', Pipeline([
+#            ('extract', FunctionTransformer(feature_weekday, validate=False)),
+#            ('ohe', OneHotEncoder()),
 #            ('shape', ShapeSaver())
 #        ])),
+
+#        ('month_cat', Pipeline([
+#            ('extract', FunctionTransformer(feature_month, validate=False)),
+#            ('ohe', OneHotEncoder()),
+#            ('shape', ShapeSaver())
+#         ])),
+
+#        ('hour_val', Pipeline([
+#            ('extract', FunctionTransformer(feature_hour, validate=False)),
+##            ('scale', StandardScaler()),
+#            ('ohe', OneHotEncoder()),
+#            ('shape', ShapeSaver())
+#         ])),
+
+#        ('mon_q1', Pipeline([
+#            ('extract', FunctionTransformer(feature_month_q1, validate=False)),
+#            ('shape', ShapeSaver())
+#         ])),
+#        ('mon_q2', Pipeline([
+#            ('extract', FunctionTransformer(feature_month_q2, validate=False)),
+#            ('shape', ShapeSaver())
+#         ])),
+#        ('mon_q3', Pipeline([
+#            ('extract', FunctionTransformer(feature_month_q3, validate=False)),
+#            ('shape', ShapeSaver())
+#         ])),
+#        ('mon_q4', Pipeline([
+#            ('extract', FunctionTransformer(feature_month_q4, validate=False)),
+#            ('shape', ShapeSaver())
+#         ])),
+
+#        ('year', Pipeline([
+#            ('extract', FunctionTransformer(feature_year, validate=False)),
+#            ('ohe', OneHotEncoder()),
+#            ('shape', ShapeSaver())
+#         ])),
+
+        ('tags_tfidf', Pipeline([
+            ('extract', FunctionTransformer(extract_tags_as_string, validate=False)),
+            ('count', TfidfVectorizer(ngram_range=(1, 2), max_features=10000)),
+#            ("tfidf", TfidfTransformer()),
+            ('shape', ShapeSaver())
+        ])),
 #
 #        ('title_tfidf', Pipeline([
 #            ('extract', FunctionTransformer(extract_title_as_string, validate=False)),
@@ -541,8 +621,66 @@ transform_pipeline = Pipeline([
 # 'transformed_test_df_shape': (34645, 60000),
 # 'features': ['author_tfidf', 'content_tfidf'],
 # 'clf': 'ridge',
-# 'valid_mae': 1.1047306784298387,
+# 'valid_mae':                                            1.1047306784298387, base
 # 'np.expm1_valid_mae': 2.0184114360205081}
+#           alpha=1.35 ==> 1.10246214138 2.01157181875
+
+
+#    + week_day
+#{'time': '10_11_2018_20_19_36',
+# 'submission_file': '10_11_2018_20_19_36.csv',
+# 'transformed_train_df_shape': (62313, 60007),
+# 'transformed_test_df_shape': (34645, 60007),
+# 'features': ['author_tfidf', 'weekday_cat', 'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.1048569125492349,
+# 'np.expm1_valid_mae': 2.0187924865803941}
+
+#    + month
+#{'time': '10_11_2018_20_28_08',
+# 'submission_file': '10_11_2018_20_28_08.csv',
+# 'transformed_train_df_shape': (62313, 60012),
+# 'transformed_test_df_shape': (34645, 60012),
+# 'features': ['author_tfidf', 'month_cat', 'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.1053952767209936,
+# 'np.expm1_valid_mae': 2.0204181338530027}
+
+#    + hour
+# {'time': '10_11_2018_20_38_18',
+# 'submission_file': '10_11_2018_20_38_18.csv',
+# 'transformed_train_df_shape': (62313, 60024),
+# 'transformed_test_df_shape': (34645, 60024),
+# 'features': ['author_tfidf', 'hour_val', 'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.1055528149574172,
+# 'np.expm1_valid_mae': 2.0208940026818558}
+
+
+#     + month q1-4
+#{'time': '10_11_2018_20_49_47',
+# 'submission_file': '10_11_2018_20_49_47.csv',
+# 'transformed_train_df_shape': (62313, 60004),
+# 'transformed_test_df_shape': (34645, 60004),
+# 'features': ['author_tfidf',
+#  'mon_q1',
+#  'mon_q2',
+#  'mon_q3',
+#  'mon_q4',
+#  'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.1056139385100618,
+# 'np.expm1_valid_mae': 2.0210786560987417}
+
+#      + tag (10000)
+#{'time': '10_11_2018_21_09_50',
+# 'submission_file': '10_11_2018_21_09_50.csv',
+# 'transformed_train_df_shape': (62313, 70000),
+# 'transformed_test_df_shape': (34645, 70000),
+# 'features': ['author_tfidf', 'tags_tfidf', 'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.1080918138654721,
+# 'np.expm1_valid_mae': 2.0285737946220319}
 # --------------------------------------------------------------------------
 
 
@@ -856,6 +994,9 @@ def sub_1_50():
                           filename=experiment['submission_file'])
     # <== predict
 
+
+
+
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 experiment_name = time.strftime("%d_%m_%Y_%H_%M_%S")
@@ -884,24 +1025,28 @@ y_valid = y_train_new[train_part_size:]
 
 
 
-ridge = Ridge(random_state = 17)
-
-ridge_params = {
-        'alpha': np.arange(0.5, 2, step=0.5) }
-
-clf = Ridge(random_state = 17)
-clf_grid_searcher = GridSearchCV(
-        estimator=clf,
-        param_grid=ridge_params,
-        scoring='neg_mean_absolute_error',
-        n_jobs=-1,
-        cv=5,
-        verbose=10)
-
+ridge = Ridge(random_state = 17, alpha=1)
 ridge.fit(X_train_part, np.log1p(y_train_part))
 ridge_pred = np.expm1(ridge.predict(X_valid))
 
-
+#ridge_params = {
+#        'alpha': np.arange(0.1, 2, step=0.05) }
+#
+#clf = Ridge(random_state = 17)
+#clf_grid_searcher = RidgeCV(alphas=ridge_params['alpha'],
+##        estimator=clf,
+##        param_grid=ridge_params,
+##        scoring='neg_mean_absolute_error',
+##        n_jobs=-1,
+#        cv=5
+##        verbose=10
+#        )
+#
+#clf_grid_searcher.fit(X_train_part, np.log1p(y_train_part))
+#clf_grid_searcher.alpha_
+#print(clf_grid_searcher.score(X_train_new, y_train_new))
+#print(clf_grid_searcher.best_score_, clf_grid_searcher.best_params_)
+#ridge_pred = np.expm1(clf_grid_searcher.predict(X_valid))
 
 plt.hist(y_valid, bins=30, alpha=.5, color='red',
          label='true', range=(0, 10))
@@ -920,6 +1065,13 @@ experiments[experiment['time']] = experiment
 
 with open('medium_experiments.pickle', 'wb') as f:
     pickle.dump(experiments, f)
+
+
+
+ridge = Ridge(random_state=17, **clf_grid_searcher.best_params_)
+ridge.fit(X_train_part, np.log1p(y_train_part))
+ridge_pred = np.expm1(ridge.predict(X_valid))
+
 
 ridge.fit(X_train_new, np.log1p(y_train_new))
 #ridge.fit(X_train_new, y_train_new)
