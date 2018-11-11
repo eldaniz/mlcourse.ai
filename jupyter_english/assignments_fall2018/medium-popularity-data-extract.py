@@ -32,6 +32,12 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from nltk.stem import PorterStemmer
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
 from sklearn.linear_model import RidgeCV
+from sklearn.linear_model import SGDRegressor
+from sklearn.linear_model import ElasticNet
+from sklearn.linear_model import Lasso
+from sklearn.ensemble import RandomForestRegressor
+import lightgbm as lgb
+from sklearn.ensemble import GradientBoostingRegressor
 
 from sklearn.linear_model import Ridge
 
@@ -281,6 +287,9 @@ def extract_tags_as_string(X):
 def extract_title_as_string(X):
     return X['title']
 
+def extract_domain_as_string(X):
+    return X['domain']
+
 
 def feature_weekday(X):
     return pd.DataFrame(X['published'].dt.weekday)
@@ -344,6 +353,13 @@ transform_pipeline = Pipeline([
             ('shape', ShapeSaver())
         ])),
 #
+        ('domain_tfidf', Pipeline([
+            ('extract', FunctionTransformer(extract_domain_as_string, validate=False)),
+            ('count', TfidfVectorizer(max_features=10000)),
+#            ("tfidf", TfidfTransformer()),
+            ('shape', ShapeSaver())
+        ])),
+
 #        ('weekday_cat', Pipeline([
 #            ('extract', FunctionTransformer(feature_weekday, validate=False)),
 #            ('ohe', OneHotEncoder()),
@@ -386,12 +402,12 @@ transform_pipeline = Pipeline([
 #            ('shape', ShapeSaver())
 #         ])),
 
-        ('tags_tfidf', Pipeline([
-            ('extract', FunctionTransformer(extract_tags_as_string, validate=False)),
-            ('count', TfidfVectorizer(ngram_range=(1, 2), max_features=10000)),
-#            ("tfidf", TfidfTransformer()),
-            ('shape', ShapeSaver())
-        ])),
+#        ('tags_tfidf', Pipeline([
+#            ('extract', FunctionTransformer(extract_tags_as_string, validate=False)),
+#            ('count', TfidfVectorizer(max_features=10000)),
+##            ("tfidf", TfidfTransformer()),
+#            ('shape', ShapeSaver())
+#        ])),
 #
 #        ('title_tfidf', Pipeline([
 #            ('extract', FunctionTransformer(extract_title_as_string, validate=False)),
@@ -633,7 +649,7 @@ transform_pipeline = Pipeline([
 # 'transformed_test_df_shape': (34645, 60007),
 # 'features': ['author_tfidf', 'weekday_cat', 'content_tfidf'],
 # 'clf': 'ridge',
-# 'valid_mae': 1.1048569125492349,
+# 'valid_mae': 1.1048569125492349,                       / ~~~~~~~~~~!!!
 # 'np.expm1_valid_mae': 2.0187924865803941}
 
 #    + month
@@ -643,7 +659,7 @@ transform_pipeline = Pipeline([
 # 'transformed_test_df_shape': (34645, 60012),
 # 'features': ['author_tfidf', 'month_cat', 'content_tfidf'],
 # 'clf': 'ridge',
-# 'valid_mae': 1.1053952767209936,
+# 'valid_mae': 1.1053952767209936,                     / ~~~~~~~~~~~~~~!!!
 # 'np.expm1_valid_mae': 2.0204181338530027}
 
 #    + hour
@@ -653,7 +669,7 @@ transform_pipeline = Pipeline([
 # 'transformed_test_df_shape': (34645, 60024),
 # 'features': ['author_tfidf', 'hour_val', 'content_tfidf'],
 # 'clf': 'ridge',
-# 'valid_mae': 1.1055528149574172,
+# 'valid_mae': 1.1055528149574172,                    / ~~~~~~~~~~~~~~!!!
 # 'np.expm1_valid_mae': 2.0208940026818558}
 
 
@@ -669,7 +685,7 @@ transform_pipeline = Pipeline([
 #  'mon_q4',
 #  'content_tfidf'],
 # 'clf': 'ridge',
-# 'valid_mae': 1.1056139385100618,
+# 'valid_mae': 1.1056139385100618,                    / ~~~~~~~~~~~~~~!!!
 # 'np.expm1_valid_mae': 2.0210786560987417}
 
 #      + tag (10000)
@@ -679,8 +695,45 @@ transform_pipeline = Pipeline([
 # 'transformed_test_df_shape': (34645, 70000),
 # 'features': ['author_tfidf', 'tags_tfidf', 'content_tfidf'],
 # 'clf': 'ridge',
-# 'valid_mae': 1.1080918138654721,
+# 'valid_mae': 1.1080918138654721,          / ~~~~~~~~~~~~~~!!!
 # 'np.expm1_valid_mae': 2.0285737946220319}
+
+#      + tag (1,2) (10000)
+#  {'time': '10_11_2018_21_14_12',
+# 'submission_file': '10_11_2018_21_14_12.csv',
+# 'transformed_train_df_shape': (62313, 70000),
+# 'transformed_test_df_shape': (34645, 70000),
+# 'features': ['author_tfidf', 'tags_tfidf', 'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.1164527950655041,
+# 'np.expm1_valid_mae': 2.0540017965742479}
+
+#      + tag (2,3) (10000)           1.12841240232 2.09074574222
+#      + tag (1,3) (10000)           1.11755385777 2.05736629597
+#      + tag (3,4) (10000)           1.11304357351 2.04360775567
+
+
+#      + domain(10000)
+#{'time': '10_11_2018_21_46_16',
+# 'submission_file': '10_11_2018_21_46_16.csv',
+# 'transformed_train_df_shape': (62313, 60292),
+# 'transformed_test_df_shape': (34645, 60292),
+# 'features': ['author_tfidf', 'domain_tfidf', 'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.1020590853409493,
+# 'np.expm1_valid_mae': 2.010358231121804}  /!!!!!!!!!!!!!!
+
+#     + domain + week_day
+#{'time': '10_11_2018_21_58_03',
+# 'submission_file': '10_11_2018_21_58_03.csv',
+# 'transformed_train_df_shape': (62313, 60299),
+# 'transformed_test_df_shape': (34645, 60299),
+# 'features': ['author_tfidf', 'domain_tfidf', 'weekday_cat', 'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.1021357893686812,
+# 'np.expm1_valid_mae': 2.0105891465790067}
+
+
 # --------------------------------------------------------------------------
 
 
@@ -995,6 +1048,292 @@ def sub_1_50():
     # <== predict
 
 
+# -------------------------------------------------------------------------
+#{'time': '10_11_2018_22_07_11',
+# 'submission_file': '10_11_2018_22_07_11.csv',
+# 'transformed_train_df_shape': (62313, 60292),
+# 'transformed_test_df_shape': (34645, 60292),
+# 'features': ['author_tfidf', 'domain_tfidf', 'content_tfidf'],
+# 'clf': 'ridge',
+# 'valid_mae': 1.0994555735512541,
+# 'np.expm1_valid_mae': 2.0025309216434302}
+#    ==> 1.49401
+# -------------------------------------------------------------------------
+def sub_1_494():
+    experiment_name = time.strftime("%d_%m_%Y_%H_%M_%S")
+    experiment = {}
+    experiment['time'] = experiment_name
+    experiment['submission_file'] = experiment['time'] + '.csv'
+
+    transformed_train_df = transform_pipeline.fit_transform(x_train_new)
+    transformed_test_df = transform_pipeline.transform(x_test_new)
+
+    X_train_new = transformed_train_df
+    y_train_new = train_df['target']
+    X_test_new = transformed_test_df
+
+    print(transformed_train_df.shape, transformed_test_df.shape)
+
+    experiment['transformed_train_df_shape'] = transformed_train_df.shape
+    experiment['transformed_test_df_shape'] = transformed_test_df.shape
+    experiment['features'] = [v[0] for v in transform_pipeline.steps[0][1].transformer_list]
+
+    train_part_size = int(0.7 * y_train_new.shape[0])
+    X_train_part = X_train_new[:train_part_size, :]
+    y_train_part = y_train_new[:train_part_size]
+    X_valid = X_train_new[train_part_size:, :]
+    y_valid = y_train_new[train_part_size:]
+
+
+
+    ridge = Ridge(random_state = 17, alpha=1.35)
+    ridge.fit(X_train_part, np.log1p(y_train_part))
+    ridge_pred = np.expm1(ridge.predict(X_valid))
+
+
+    #ridge_params = {
+    #        'alpha': np.arange(0.1, 3, step=0.05) }
+
+    #clf = Ridge(random_state = 17)
+    #clf_grid_searcher = RidgeCV(alphas=ridge_params['alpha'],
+    #        estimator=clf,
+    #        param_grid=ridge_params,
+    #        scoring='neg_mean_absolute_error',
+    #        n_jobs=-1,
+    #        cv=5
+    #        verbose=10
+    #        )
+
+    #clf_grid_searcher.fit(X_train_part, np.log1p(y_train_part))
+    #clf_grid_searcher.alpha_
+    #print(clf_grid_searcher.score(X_train_new, y_train_new))
+    #print(clf_grid_searcher.best_score_, clf_grid_searcher.best_params_)
+    #ridge_pred = np.expm1(clf_grid_searcher.predict(X_valid))
+
+    plt.hist(y_valid, bins=30, alpha=.5, color='red',
+             label='true', range=(0, 10))
+    plt.hist(ridge_pred, bins=30, alpha=.5, color='green',
+             label='pred', range=(0, 10))
+    plt.legend()
+    plt.show()
+
+
+    valid_mae = mean_absolute_error(y_valid, ridge_pred)
+    print(valid_mae, np.expm1(valid_mae))
+    experiment['clf'] = 'ridge'
+    experiment['valid_mae'] = valid_mae
+    experiment['np.expm1_valid_mae'] = np.expm1(valid_mae)
+    experiments[experiment['time']] = experiment
+
+    with open('medium_experiments.pickle', 'wb') as f:
+        pickle.dump(experiments, f)
+
+
+
+    #ridge = Ridge(random_state=17, **clf_grid_searcher.best_params_)
+    #ridge.fit(X_train_part, np.log1p(y_train_part))
+    #ridge_pred = np.expm1(ridge.predict(X_valid))
+
+
+    ridge.fit(X_train_new, np.log1p(y_train_new))
+    #ridge.fit(X_train_new, y_train_new)
+    ridge_test_pred = np.expm1(ridge.predict(X_test_new))
+    #ridge_test_pred = ridge.predict(X_test_new)
+
+    # ==> predict
+    ridge_test_pred_corrected = \
+        ridge_test_pred + (all_zero_mae - ridge_test_pred.mean())
+    print(ridge_test_pred_corrected.mean(), all_zero_mae)
+
+    write_submission_file(prediction=ridge_test_pred_corrected,
+                          filename=experiment['submission_file'])
+    # <== predict
+
+
+# --------------------------------------------------------------------------
+#    con_auth+dom
+# 'transformed_train_df_shape': (62313, 60292),
+# 'transformed_test_df_shape': (34645, 60292),
+# 'features': ['author_tfidf', 'domain_tfidf', 'content_tfidf']}
+# Ridge valid mae: 1.0994555735512541
+# LGM valid mae: 1.1647642350341432
+# Mix valid mae: 1.0954004894293936
+#     ==> 1.46802
+# --------------------------------------------------------------------------
+def sub_mix_1():
+    experiment_name = time.strftime("%d_%m_%Y_%H_%M_%S")
+    experiment = {}
+    experiment['time'] = experiment_name
+    experiment['submission_file'] = experiment['time'] + '.csv'
+
+    transformed_train_df = transform_pipeline.fit_transform(x_train_new)
+    transformed_test_df = transform_pipeline.transform(x_test_new)
+
+    X_train_new = transformed_train_df
+    y_train_new = train_df['target']
+    X_test_new = transformed_test_df
+
+    print(transformed_train_df.shape, transformed_test_df.shape)
+
+    experiment['transformed_train_df_shape'] = transformed_train_df.shape
+    experiment['transformed_test_df_shape'] = transformed_test_df.shape
+    experiment['features'] = [v[0] for v in transform_pipeline.steps[0][1].transformer_list]
+
+    train_part_size = int(0.7 * y_train_new.shape[0])
+    X_train_part = X_train_new[:train_part_size, :]
+    y_train_part = y_train_new[:train_part_size]
+    X_valid = X_train_new[train_part_size:, :]
+    y_valid = y_train_new[train_part_size:]
+
+
+    ridge = Ridge(random_state = 17, alpha=1.35)
+    ridge.fit(X_train_part, np.log1p(y_train_part))
+    ridge_pred = np.expm1(ridge.predict(X_valid))
+
+
+    lgb_x_train_part = lgb.Dataset(
+            X_train_part.astype(np.float32),
+            label=np.log1p(y_train_part))
+
+    lgb_x_valid = lgb.Dataset(
+            X_valid.astype(np.float32),
+            label=np.log1p(y_valid))
+
+    param = {'num_leaves': 31, 'num_trees': 100, 'objective': 'mean_absolute_error',
+            'metric': 'mae'}
+
+    num_round = 100
+    bst_lgb = lgb.train(param,
+                        lgb_x_train_part,
+                        num_round,
+                        valid_sets=[lgb_x_valid],
+                        early_stopping_rounds=20)
+
+    lgb_pred = np.expm1(
+            bst_lgb.predict(
+                    X_valid.astype(np.float32),
+                    num_iteration=bst_lgb.best_iteration))
+
+    plt.hist(y_valid, bins=30, alpha=.5, color='red', label='true', range=(0,10));
+    plt.hist(ridge_pred, bins=30, alpha=.5, color='green', label='Ridge', range=(0,10));
+    plt.hist(lgb_pred, bins=30, alpha=.5, color='blue', label='Lgbm', range=(0,10));
+    plt.legend();
+    ridge_valid_mae = mean_absolute_error(y_valid, ridge_pred)
+    print('Ridge valid mae: {}'.format(ridge_valid_mae))
+    lgb_valid_mae = mean_absolute_error(y_valid, lgb_pred)
+    print('LGM valid mae: {}'.format(lgb_valid_mae))
+    print('Mix valid mae: {}'.format(
+            mean_absolute_error(y_valid, .6 * lgb_pred + .4 * ridge_pred)))
+
+    ridge.fit(X_train_new, np.log1p(y_train_new));
+    lgb_x_train = lgb.Dataset(X_train_new.astype(np.float32),
+                              label=np.log1p(y_train_new))
+    num_round = 50
+    bst_lgb = lgb.train(param, lgb_x_train, num_round)
+
+    ridge_test_pred = np.expm1(ridge.predict(X_test_new))
+    lgb_test_pred = np.expm1(bst_lgb.predict(X_test_new.astype(np.float32)))
+
+    mix_test_pred = .6 * lgb_test_pred + .4 * ridge_test_pred
+    # ==> predict
+    mix_test_pred_corrected = \
+        mix_test_pred + (all_zero_mae - mix_test_pred.mean())
+    print(mix_test_pred_corrected.mean(), all_zero_mae)
+    write_submission_file(prediction=mix_test_pred_corrected,
+                          filename=experiment['submission_file'])
+    # <== predict
+
+
+# --------------------------------------------------------------------------
+
+def train_lgm(Xtrain, ytrain, Xvalid, yvalid):
+    experiment_name = 'train_lgm' + time.strftime("%d_%m_%Y_%H_%M_%S")
+    experiment = {}
+    experiment['time'] = experiment_name
+
+    print(Xtrain.shape)
+
+    experiment['transformed_train_df_shape'] = Xtrain.shape
+    experiment['features'] = [v[0] for v in transform_pipeline.steps[0][1].transformer_list]
+
+    lgb_x_train_part = lgb.Dataset(
+            Xtrain.astype(np.float32),
+            label=np.log1p(ytrain))
+
+    lgb_x_valid = lgb.Dataset(
+            Xvalid.astype(np.float32),
+            label=np.log1p(yvalid))
+
+    param = {'num_leaves': 31,
+             'num_trees': 500,
+             'objective': 'mean_absolute_error',
+             'metric': 'mae'}
+
+    num_round = 100
+    bst_lgb = lgb.train(param,
+                        lgb_x_train_part,
+                        num_round,
+                        valid_sets = [lgb_x_valid],
+                        early_stopping_rounds=20)
+
+    lgb_pred = np.expm1(
+            bst_lgb.predict(
+                    Xvalid.astype(np.float32),
+                    num_iteration = bst_lgb.best_iteration))
+
+    lgb_valid_mae = mean_absolute_error(yvalid, lgb_pred)
+    print('LGM valid mae: {}'.format(lgb_valid_mae))
+
+    experiment['clf'] = 'lgm'
+    experiment['valid_mae'] = lgb_valid_mae
+    experiment['np.expm1_valid_mae'] = np.expm1(lgb_valid_mae)
+
+    return bst_lgb, lgb_pred, experiment
+
+
+# --------------------------------------------------------------------------
+def train_clf(clf, Xtrain, ytrain, Xvalid, yvalid, clf_name):
+    experiment_name = clf_name + time.strftime("%d_%m_%Y_%H_%M_%S")
+    experiment = {}
+    experiment['time'] = experiment_name
+
+    print(Xtrain.shape)
+
+    experiment['transformed_train_df_shape'] = Xtrain.shape
+    experiment['features'] = [v[0] for v in transform_pipeline.steps[0][1].transformer_list]
+
+    clf.fit(Xtrain, np.log1p(ytrain))
+    clf_pred = np.expm1(clf.predict(Xvalid))
+
+    valid_mae = mean_absolute_error(yvalid, clf_pred)
+    print('{} valid mae: {}'.format(clf_name, valid_mae))
+
+    experiment['clf'] = clf_name
+    experiment['valid_mae'] = valid_mae
+    experiment['np.expm1_valid_mae'] = np.expm1(valid_mae)
+
+    return clf, clf_pred, experiment
+
+# --------------------------------------------------------------------------
+def train_ridge(Xtrain, ytrain, Xvalid, yvalid):
+    clf = Ridge(random_state = 17, alpha=1.35)
+    return train_clf(clf, Xtrain, ytrain, Xvalid, yvalid, 'train_ridge')
+
+# --------------------------------------------------------------------------
+def train_sgd(Xtrain, ytrain, Xvalid, yvalid):
+#    {'alpha': 1e-06,
+#     'loss': 'epsilon_insensitive',
+#     'max_iter': 1000,
+#     'penalty': 'l2'}
+    clf = SGDRegressor(random_state = 17,
+                       alpha=1e-06,
+                       loss='epsilon_insensitive',
+                       max_iter=1000,
+                       penalty='l2',
+                       verbose=1
+                       )
+
+    return train_clf(clf, Xtrain, ytrain, Xvalid, yvalid, 'train_sgd')
 
 
 # --------------------------------------------------------------------------
@@ -1024,24 +1363,141 @@ X_valid = X_train_new[train_part_size:, :]
 y_valid = y_train_new[train_part_size:]
 
 
+ridge, ridge_pred, ridge_experiment = train_ridge(
+        X_train_part,
+        y_train_part,
+        X_valid,
+        y_valid)
 
-ridge = Ridge(random_state = 17, alpha=1)
+lgm, lgb_pred, lgm_experiment = train_lgm(
+        X_train_part,
+        y_train_part,
+        X_valid,
+        y_valid)
+
+
+ridge = Ridge(random_state = 17, alpha=1.35)
 ridge.fit(X_train_part, np.log1p(y_train_part))
 ridge_pred = np.expm1(ridge.predict(X_valid))
 
+
+lgb_x_train_part = lgb.Dataset(
+        X_train_part.astype(np.float32),
+        label=np.log1p(y_train_part))
+
+lgb_x_valid = lgb.Dataset(
+        X_valid.astype(np.float32),
+        label=np.log1p(y_valid))
+
+param = {'num_leaves': 31,
+         'num_trees': 500,
+         'objective': 'mean_absolute_error',
+         'metric': 'mae'}
+
+num_round = 100
+bst_lgb = lgb.train(param,
+                    lgb_x_train_part,
+                    num_round,
+                    valid_sets=[lgb_x_valid],
+                    early_stopping_rounds=20)
+
+lgb_pred = np.expm1(
+        bst_lgb.predict(
+                X_valid.astype(np.float32),
+                num_iteration=bst_lgb.best_iteration))
+lgb_valid_mae = mean_absolute_error(y_valid, lgb_pred)
+print('LGM valid mae: {}'.format(lgb_valid_mae))
+
+plt.hist(y_valid, bins=30, alpha=.5, color='red', label='true', range=(0,10));
+plt.hist(ridge_pred, bins=30, alpha=.5, color='green', label='Ridge', range=(0,10));
+plt.hist(lgb_pred, bins=30, alpha=.5, color='blue', label='Lgbm', range=(0,10));
+plt.legend();
+ridge_valid_mae = mean_absolute_error(y_valid, ridge_pred)
+print('Ridge valid mae: {}'.format(ridge_valid_mae))
+
+print('Mix valid mae: {}'.format(
+        mean_absolute_error(y_valid, .6 * lgb_pred + .4 * ridge_pred)))
+
+ridge.fit(X_train_new, np.log1p(y_train_new));
+lgb_x_train = lgb.Dataset(X_train_new.astype(np.float32),
+                          label=np.log1p(y_train_new))
+num_round = 50
+bst_lgb = lgb.train(param, lgb_x_train, num_round)
+
+ridge_test_pred = np.expm1(ridge.predict(X_test_new))
+lgb_test_pred = np.expm1(bst_lgb.predict(X_test_new.astype(np.float32)))
+
+mix_test_pred = .6 * lgb_test_pred + .4 * ridge_test_pred
+# ==> predict
+mix_test_pred_corrected = \
+    mix_test_pred + (all_zero_mae - mix_test_pred.mean())
+print(mix_test_pred_corrected.mean(), all_zero_mae)
+write_submission_file(prediction=mix_test_pred_corrected,
+                      filename=experiment['submission_file'])
+# <== predict
+
+
+sgd_params = {
+    'alpha': (0.00001, 0.000001),
+    'penalty': ('l2', 'elasticnet'),
+    'max_iter': (50, 100, 500, 1000),
+    'loss': ['epsilon_insensitive', 'huber']
+}
+sgd = SGDRegressor(random_state = 17,
+                     loss='epsilon_insensitive',
+                     max_iter=1000,
+                     verbose=1)
+sgd = GridSearchCV(
+        sgd,
+        sgd_params,
+        cv=5,
+        n_jobs=-1,
+        verbose=10)
+
+#sgd = RandomForestRegressor(
+#        random_state = 17,
+#        n_estimators=200,
+#        criterion='mae',
+#        verbose=10)
+sgd.fit(X_train_part, np.log1p(y_train_part))
+sgd_sgrid = sgd
+sgd_sgrid_pred = np.expm1(sgd_sgrid.predict(X_valid))
+print(sgd_sgrid.score(X_train_new, y_train_new))
+valid_mae = mean_absolute_error(y_valid, sgd_sgrid_pred)
+print(valid_mae, np.expm1(valid_mae))
+
+sgd = SGDRegressor(random_state = 17,
+                     verbose=1,
+                     **sgd_sgrid.best_params_)
+sgd.fit(X_train_part, np.log1p(y_train_part))
+sgd_pred = np.expm1(sgd.predict(X_valid))
+print(sgd.score(X_train_new, y_train_new))
+valid_mae = mean_absolute_error(y_valid, sgd_pred)
+print(valid_mae, np.expm1(valid_mae))
+
+#mix_pred = .6 * lgb_pred + .4 * ridge_pred# + 0.3 * sgd_sgrid_pred
+mix_pred = .4 * lgb_pred + .3 * ridge_pred + 0.3 * sgd_sgrid_pred
+print('Mix valid mae: {}'.format(mean_absolute_error(y_valid, mix_pred)))
+
+plt.hist(y_valid, bins=30, alpha=.5, color='red', label='true', range=(0,10));
+plt.hist(ridge_pred, bins=30, alpha=.5, color='green', label='Ridge', range=(0,10));
+plt.hist(sgd_pred, bins=30, alpha=.5, color='blue', label='SGD', range=(0,10));
+plt.hist(mix_pred, bins=30, alpha=.5, color='maroon', label='mixed', range=(0,10));
+plt.legend();
+
 #ridge_params = {
-#        'alpha': np.arange(0.1, 2, step=0.05) }
-#
+#        'alpha': np.arange(0.1, 3, step=0.05) }
+
 #clf = Ridge(random_state = 17)
 #clf_grid_searcher = RidgeCV(alphas=ridge_params['alpha'],
-##        estimator=clf,
-##        param_grid=ridge_params,
-##        scoring='neg_mean_absolute_error',
-##        n_jobs=-1,
+#        estimator=clf,
+#        param_grid=ridge_params,
+#        scoring='neg_mean_absolute_error',
+#        n_jobs=-1,
 #        cv=5
-##        verbose=10
+#        verbose=10
 #        )
-#
+
 #clf_grid_searcher.fit(X_train_part, np.log1p(y_train_part))
 #clf_grid_searcher.alpha_
 #print(clf_grid_searcher.score(X_train_new, y_train_new))
@@ -1068,9 +1524,9 @@ with open('medium_experiments.pickle', 'wb') as f:
 
 
 
-ridge = Ridge(random_state=17, **clf_grid_searcher.best_params_)
-ridge.fit(X_train_part, np.log1p(y_train_part))
-ridge_pred = np.expm1(ridge.predict(X_valid))
+#ridge = Ridge(random_state=17, **clf_grid_searcher.best_params_)
+#ridge.fit(X_train_part, np.log1p(y_train_part))
+#ridge_pred = np.expm1(ridge.predict(X_valid))
 
 
 ridge.fit(X_train_new, np.log1p(y_train_new))
