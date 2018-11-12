@@ -346,19 +346,19 @@ class StemmedCountVectorizer(TfidfVectorizer):
 transform_pipeline = Pipeline([
     ('features', FeatureUnion([
         # List of features goes here:
-#        ('author_tfidf', Pipeline([
-#            ('extract', FunctionTransformer(extract_author_as_string, validate=False)),
-#            ('count', TfidfVectorizer(ngram_range=(2, 2), max_features=10000)),
-##            ("tfidf", TfidfTransformer()),
-#            ('shape', ShapeSaver())
-#        ])),
-#
-#        ('domain_tfidf', Pipeline([
-#            ('extract', FunctionTransformer(extract_domain_as_string, validate=False)),
-#            ('count', TfidfVectorizer(max_features=10000)),
-##            ("tfidf", TfidfTransformer()),
-#            ('shape', ShapeSaver())
-#        ])),
+        ('author_tfidf', Pipeline([
+            ('extract', FunctionTransformer(extract_author_as_string, validate=False)),
+            ('count', TfidfVectorizer(ngram_range=(2, 2), max_features=10000)),
+#            ("tfidf", TfidfTransformer()),
+            ('shape', ShapeSaver())
+        ])),
+
+        ('domain_tfidf', Pipeline([
+            ('extract', FunctionTransformer(extract_domain_as_string, validate=False)),
+            ('count', TfidfVectorizer(max_features=10000)),
+#            ("tfidf", TfidfTransformer()),
+            ('shape', ShapeSaver())
+        ])),
 
 #        ('weekday_cat', Pipeline([
 #            ('extract', FunctionTransformer(feature_weekday, validate=False)),
@@ -1793,6 +1793,7 @@ experiments[experiment['time']] = experiment
 import collections
 from keras.layers.core import Dense, Dropout, SpatialDropout1D
 from keras.layers.convolutional import Conv1D
+from keras.layers import MaxPooling1D, Flatten, Embedding
 from keras.layers.embeddings import Embedding
 from keras.layers.pooling import GlobalMaxPooling1D
 from keras.layers.recurrent import LSTM
@@ -1981,13 +1982,103 @@ write_submission_file(prediction=model_test_pred_corrected,
 
 
 
+from nltk.corpus import stopwords
+
+vectorizer = CountVectorizer(
+        binary=True,
+        stop_words=stopwords.words('english'),
+        lowercase=True,
+#        min_df=3,
+#        max_df=0.9,
+        max_features=5000)
+
+XX_nn_train = train_df['content']
+yy_nn_train = train_df['target']
+XX_nn_test = test_df['content']
+
+XX_train, XX_valid, yy_train, yy_valid = train_test_split(XX_nn_train,
+                                                          yy_nn_train,
+                                                          test_size=0.3,
+                                                          random_state=17)
+
+X_train_onehot = vectorizer.fit_transform(XX_train)
+X_test_onehot = vectorizer.transform(XX_nn_test)
+
+word2idx = {word: idx for idx, word in enumerate(vectorizer.get_feature_names())}
+tokenize = vectorizer.build_tokenizer()
+preprocess = vectorizer.build_preprocessor()
+
+
+def to_sequence(tokenizer, preprocessor, index, text):
+    words = tokenizer(preprocessor(text))
+    indexes = [index[word] for word in words if word in index]
+    return indexes
+
+print(
+      to_sequence(
+              tokenize,
+              preprocess,
+              word2idx,
+              "This is an important test!"))  # [2269, 4453]
+X_train_sequences = [
+        to_sequence(tokenize, preprocess, word2idx, x) for x in XX_train]
+print(X_train_sequences[0])
+
+# Compute the max lenght of a text
+MAX_SEQ_LENGHT = len(max(X_train_sequences, key=len))
+print("MAX_SEQ_LENGHT=", MAX_SEQ_LENGHT)
+
+N_FEATURES = len(vectorizer.get_feature_names())
+X_train_sequences = pad_sequences(
+        X_train_sequences,
+        maxlen=MAX_SEQ_LENGHT,
+        value=N_FEATURES)
+print(X_train_sequences[0])
 
 
 
+model = Sequential()
+model.add(Embedding(len(vectorizer.get_feature_names()) + 1,
+                    64,  # Embedding size
+                    input_length=MAX_SEQ_LENGHT))
+model.add(Conv1D(64, 5, activation='relu'))
+model.add(MaxPooling1D(5))
+model.add(Flatten())
+model.add(Dense(units=64, activation='relu'))
+model.add(Dense(units=1))
+
+model.compile(
+        loss='mean_absolute_error',
+        optimizer='adam',
+        metrics=['mae']
+        )
+
+model.summary()
 
 
+model.fit(
+        X_train_sequences[:-1000],
+        yy_train[:-1000],
+        epochs=2,
+        batch_size=512,
+        verbose=1,
+        validation_data=(
+                X_train_sequences[-1000:],
+                yy_train[-1000:]))
 
+X_valid_sequences = [
+        to_sequence(tokenize, preprocess, word2idx, x) for x in XX_valid]
+X_valid_sequences = pad_sequences(
+        X_valid_sequences,
+        maxlen=MAX_SEQ_LENGHT,
+        value=N_FEATURES)
 
+scores = model.evaluate(
+        X_valid_sequences,
+        yy_valid,
+        verbose=1)
+
+print("NN MAE:", scores[1])  # MAE: 0.875
 
 
 
