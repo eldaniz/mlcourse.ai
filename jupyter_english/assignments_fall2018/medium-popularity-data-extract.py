@@ -2045,7 +2045,7 @@ def sub15_11_2018_11_48_04():
 #  'mon_q4',
 #  'year',
 #  'tags_tfidf',
-#  'content_lemma_tfidf'],
+#  'content_lemma_tfidf'],   // min_df=5!!
 # 'clf': 'train_ridge',
 # 'valid_mae': 1.0769027437525678,
 # 'np.expm1_valid_mae': 1.9355732335085105}
@@ -2063,7 +2063,7 @@ def sub15_11_2018_11_48_04():
 #  'mon_q4',
 #  'year',
 #  'tags_tfidf',
-#  'content_lemma_tfidf'],
+#  'content_lemma_tfidf'],   // min_df=5!!
 # 'clf': 'lgm',
 # 'valid_mae': 1.132303696692134,
 # 'np.expm1_valid_mae': 2.1027961744285388}
@@ -2206,7 +2206,7 @@ def train_lgm(Xtrain, ytrain, Xvalid, yvalid, Xtest):
             label=src_to_pred(yvalid))
 
     param = {'num_leaves': 31,
-             'num_trees': 500,
+             'num_trees': 1000, # 500
              'objective': 'mean_absolute_error',
              'metric': 'mae'}
 
@@ -2310,10 +2310,12 @@ def train_clf_cv(clf, cv, Xtrain, ytrain, Xvalid, yvalid, Xtest, clf_name,
 
 
 # --------------------------------------------------------------------------
-def train_ridge_cv(cv, Xtrain, ytrain, Xvalid, yvalid, Xtest):
+def train_ridge_cv(cv, Xtrain, ytrain, Xvalid, yvalid, Xtest,
+                   alphas=np.arange(0.1, 5, step=0.05)  # [1e-10, 1e-2, 1, 1.35, 5]
+                   ):
     clf = Ridge(random_state = 17, alpha=1.35)
     grid_params = {
-            'alpha': [1e-10, 1e-2, 1, 1.35, 5],
+            'alpha': alphas,
 #            'solver' : ['svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga']
             }
     return train_clf_cv(clf, cv, Xtrain, ytrain, Xvalid, yvalid, Xtest,
@@ -2324,24 +2326,25 @@ def train_ridge_cv(cv, Xtrain, ytrain, Xvalid, yvalid, Xtest):
 def train_lgm_cv(cv, Xtrain, ytrain, Xvalid, yvalid, Xtest):
     clf = lgb.LGBMRegressor(random_state=17)
     grid_params = {
-            'learning_rate': [0.01, 0.1, 1],
-            'n_estimators': [20, 100],
-            'early_stopping_rounds': [20, 30],
-            'num_leaves': 31,
+            'learning_rate': [0.01, 0.1],
+            'n_estimators': [50, 150],
+#            'early_stopping_rounds': [10, 20],
+            'num_leaves': [21, 31],
             'num_trees': [200, 500],
-            'max_depth' : [4],
+            'max_depth' : [2, 4, 5, 10],
             'seed': [17],
-            'objective': 'mean_absolute_error',
-            'metric': 'mae'
+            'objective': ['mean_absolute_error'],
+            'metric': ['mae']
             }
 
     return train_clf_cv(clf, cv, Xtrain, ytrain, Xvalid, yvalid, Xtest,
                         'train_lgm',
                         grid_params=grid_params)
 
+
 # --------------------------------------------------------------------------
-def train_ridge(Xtrain, ytrain, Xvalid, yvalid, Xtest):
-    clf = Ridge(random_state = 17, alpha=1.35)
+def train_ridge(Xtrain, ytrain, Xvalid, yvalid, Xtest, alpha=1.35):
+    clf = Ridge(random_state = 17, alpha=alpha)
     return train_clf(clf, Xtrain, ytrain, Xvalid, yvalid, Xtest, 'train_ridge')
 
 
@@ -2389,8 +2392,29 @@ ridge, ridge_pred, ridge_experiment, ridge_test_pred = train_ridge(
         y_train_part,
         X_valid,
         y_valid,
-        X_test_new)
+        X_test_new,
+        alpha=2.74)
+# 1.35  train_ridge valid mae: 1.0769027437525678
+# 2.6   train_ridge valid mae: 1.0769027437525678
+# 2.74  train_ridge valid mae: 1.0672972013178883
 ridge_pred1 = pred_to_src(ridge.predict(X_train_part))
+
+
+#cv = 10
+#ridge_pred_orig = ridge_pred
+#ridgecv, ridgecv_pred, ridgecv_experiment, ridgecv_test_pred = train_ridge_cv(
+#            cv,
+#            X_train_part,
+#            y_train_part,
+#            X_valid,
+#            y_valid,
+#            X_test_new,
+#            alphas=np.arange(0.1, 5, step=0.01))
+#print(ridgecv.best_params_)
+#print('Ridge valid mae: {}'.format(ridgecv_experiment['valid_mae']))
+#ridge_pred = ridgecv_pred
+#ridge_pred1 = pred_to_src(ridge.predict(X_train_part))
+
 
 lgm, lgb_pred, lgm_experiment, lgm_test_pred = train_lgm(
         X_train_part,
@@ -2399,6 +2423,20 @@ lgm, lgb_pred, lgm_experiment, lgm_test_pred = train_lgm(
         y_valid,
         X_test_new)
 lgb_pred1 = pred_to_src(lgm.predict(X_train_part))
+print('LGM valid mae: {}'.format(lgm_experiment['valid_mae']))
+
+
+#lgmcv, lgbcv_pred, lgmcv_experiment, lgmcv_test_pred = train_lgm_cv(
+#        cv,
+#        X_train_part,
+#        y_train_part,
+#        X_valid,
+#        y_valid,
+#        X_test_new)
+#print(lgmcv.best_params_)
+#print('LGM valid mae: {}'.format(lgmcv_experiment['valid_mae']))
+
+
 
 sgd, sgd_pred, sgd_experiment, sgd_test_pred = train_sgd(
         X_train_part,
@@ -2408,64 +2446,11 @@ sgd, sgd_pred, sgd_experiment, sgd_test_pred = train_sgd(
         X_test_new)
 sgd_pred11 = pred_to_src(sgd.predict(X_train_part))
 
-lm_df = pd.DataFrame()
-lm_df['lgb_pred'] = lgb_pred1
-#lm_df['2lgb_pred'] = 0.5 + 1/(lgb_pred1**(-2))
-#lm_df['1_2lgb_pred'] = 1/(lgb_pred1**2)
-#lm_df['3lgb_pred'] = (lgb_pred1**3)
-lm_df['ridge_pred'] = ridge_pred1
-#lm_df['2ridge_pred'] = 0.5 + 1/(ridge_pred1**(-2))
-#lm_df['1_2ridge_pred'] = 1/(ridge_pred1**2)
-#lm_df['3ridge_pred'] = (ridge_pred1**3)
-lm_df['target'] = y_train_part.values
-
 lm = Ridge(random_state = 17, alpha=1)
 grid_params = {
         'alpha': np.arange(-5, 5, step=0.05),
 #            'solver' : ['svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga']
         }
-
-##from sklearn.preprocessing import PolynomialFeatures
-##poly = PolynomialFeatures(2)
-##poly = poly.fit_transform(lm_df[['lgb_pred', 'ridge_pred']])
-#
-#lm_grid = GridSearchCV(
-#            estimator=lm,
-#            param_grid=grid_params,
-#            n_jobs=-1,
-#            cv=3,
-#            verbose=10)
-#lm_grid.fit(lm_df[['lgb_pred', 'ridge_pred']],
-#       lm_df['target']
-#       )
-#print(lm_grid.best_params_)
-#lm = Ridge(random_state=17, **lm_grid.best_params_)
-lm.fit(lm_df[lm_df.columns[:-1]],
-       lm_df['target'],
-       )
-print(lm.coef_)
-coef_1 = lm.coef_[0]
-coef_2 = lm.coef_[1]
-coef_3 = lm.coef_[2]
-coef_4 = lm.coef_[3]
-coef_5 = lm.coef_[4]
-coef_6 = lm.coef_[5]
-
-mix_pred = \
-    coef_1 * (lgb_pred) + coef_2 * (lgb_pred**2) + coef_3 * 1/(lgb_pred**2) + \
-    coef_4 * (ridge_pred) + coef_4 * (ridge_pred**2) + coef_6 * 1/(ridge_pred**2)
-
-mix_pred = \
-    coef_1 * 1/lgb_pred + coef_2 * 1/(lgb_pred**2) + \
-    coef_3 * 1/ridge_pred + coef_4 * 1/(ridge_pred**2)
-
-mix_pred = \
-    coef_1 * lgb_pred + coef_2 * (lgb_pred**2) + \
-    coef_3 * ridge_pred + coef_4 * (ridge_pred**2)
-
-mix_pred = \
-    coef_1 * lgb_pred + coef_2 * (lgb_pred**2) + coef_3 * (lgb_pred**3) +\
-    coef_4 * ridge_pred + coef_5 * (ridge_pred**2) + coef_6 * (ridge_pred**3)
 
 coef_1 = 0.6
 coef_2 = 0.4
