@@ -100,48 +100,48 @@ def strip_tags(html):
     s.feed(html)
     return s.get_data()
 
-def init():
-    def extract_features(path_to_data):
+#def init():
+def extract_features(path_to_data):
 
-        content_list = []
-        published_list = []
-        title_list = []
-        author_list = []
-        domain_list = []
-        tags_list = []
-        url_list = []
+    content_list = []
+    published_list = []
+    title_list = []
+    author_list = []
+    domain_list = []
+    tags_list = []
+    url_list = []
 
-        with open(path_to_data, encoding='utf-8') as inp_json_file:
-            for line in inp_json_file:
-                json_data = read_json_line(line)
-    #             content = json_data['content'].replace('\n', ' ').replace('\r', ' ') # ORIG
-                content = json_data['content'].replace('\n', ' \n ').replace('\r', ' \n ') # keep newline
-                content_no_html_tags = strip_tags(content)
-                content_list.append(content_no_html_tags)
-                published = json_data['published']['$date']
-                published_list.append(published)
-                title = json_data['meta_tags']['title'].split('\u2013')[0].strip() #'Medium Terms of Service – Medium Policy – Medium'
-                title_list.append(title)
-                author = json_data['meta_tags']['author'].strip()
-                author_list.append(author)
-                domain = json_data['domain']
-                domain_list.append(domain)
-                url = json_data['url']
-                url_list.append(url)
+    with open(path_to_data, encoding='utf-8') as inp_json_file:
+        for line in inp_json_file:
+            json_data = read_json_line(line)
+#             content = json_data['content'].replace('\n', ' ').replace('\r', ' ') # ORIG
+            content = json_data['content'].replace('\n', ' \n ').replace('\r', ' \n ') # keep newline
+            content_no_html_tags = strip_tags(content)
+            content_list.append(content_no_html_tags)
+            published = json_data['published']['$date']
+            published_list.append(published)
+            title = json_data['meta_tags']['title'].split('\u2013')[0].strip() #'Medium Terms of Service – Medium Policy – Medium'
+            title_list.append(title)
+            author = json_data['meta_tags']['author'].strip()
+            author_list.append(author)
+            domain = json_data['domain']
+            domain_list.append(domain)
+            url = json_data['url']
+            url_list.append(url)
 
-                tags_str = []
-                soup = BeautifulSoup(content, 'lxml')
-                try:
-                    tag_block = soup.find('ul', class_='tags')
-                    tags = tag_block.find_all('a')
-                    for tag in tags:
-                        tags_str.append(tag.text.translate({ord(' '):None, ord('-'):None}))
-                    tags = ' '.join(tags_str)
-                except Exception:
-                    tags = 'None'
-                tags_list.append(tags)
+            tags_str = []
+            soup = BeautifulSoup(content, 'lxml')
+            try:
+                tag_block = soup.find('ul', class_='tags')
+                tags = tag_block.find_all('a')
+                for tag in tags:
+                    tags_str.append(tag.text.translate({ord(' '):None, ord('-'):None}))
+                tags = ' '.join(tags_str)
+            except Exception:
+                tags = 'None'
+            tags_list.append(tags)
 
-        return content_list, published_list, title_list, author_list, domain_list, tags_list, url_list
+    return content_list, published_list, title_list, author_list, domain_list, tags_list, url_list
 
 
 # ## 1.2. Data extraction
@@ -149,80 +149,82 @@ def init():
 # [ ]:
 
 
-    content_list, published_list, title_list, author_list, domain_list, tags_list, url_list = \
-        extract_features(os.path.join(PATH, 'train.json'))
+content_list, published_list, title_list, author_list, domain_list, tags_list, url_list = \
+    extract_features(os.path.join(PATH, 'train.json'))
 
-    train = pd.DataFrame()
-    train['content'] = content_list
-    train['published'] = pd.to_datetime(published_list, format='%Y-%m-%dT%H:%M:%S.%fZ')
-    train['title'] = title_list
-    train['author'] = author_list
-    train['domain'] = domain_list
-    train['tags'] = tags_list
-    # train['length'] = train['content'].apply(len)
-    train['url'] = url_list
+train = pd.DataFrame()
+train['content'] = content_list
+train['published'] = pd.to_datetime(published_list, format='%Y-%m-%dT%H:%M:%S.%fZ')
+train['title'] = title_list
+train['author'] = author_list
+train['domain'] = domain_list
+train['tags'] = tags_list
+# train['length'] = train['content'].apply(len)
+train['url'] = url_list
 
-    content_list, published_list, title_list, author_list, domain_list, tags_list, url_list = \
-        extract_features(os.path.join(PATH, 'test.json'))
+content_list, published_list, title_list, author_list, domain_list, tags_list, url_list = \
+    extract_features(os.path.join(PATH, 'test.json'))
 
-    test = pd.DataFrame()
-    test['content'] = content_list
-    test['published'] = pd.to_datetime(published_list, format='%Y-%m-%dT%H:%M:%S.%fZ')
-    test['title'] = title_list
-    test['author'] = author_list
-    test['domain'] = domain_list
-    test['tags'] = tags_list
-    # test['length'] = test['content'].apply(len)
-    test['url'] = url_list
-
-
-    # [ ]:
+test = pd.DataFrame()
+test['content'] = content_list
+test['published'] = pd.to_datetime(published_list, format='%Y-%m-%dT%H:%M:%S.%fZ')
+test['title'] = title_list
+test['author'] = author_list
+test['domain'] = domain_list
+test['tags'] = tags_list
+# test['length'] = test['content'].apply(len)
+test['url'] = url_list
 
 
-    del content_list, published_list, title_list, author_list, domain_list, tags_list, url_list
-    gc.collect()
-
-
-    train['week_day'] = train['published'].apply(lambda x: x.dayofweek)
-    train['year'] = train['published'].apply(lambda x: x.year)
-    train['month'] = train['published'].apply(lambda x: x.month)
-    train['hour'] = train['published'].apply(lambda x: x.hour)
-    train['length'] = train['content'].apply(len)
-    #train['number_of_tags'] = train['tags'].apply(lambda x: len(x.split()))
-
-    test['week_day'] = test['published'].apply(lambda x: x.dayofweek)
-    test['year'] = test['published'].apply(lambda x: x.year)
-    test['month'] = test['published'].apply(lambda x: x.month)
-    test['hour'] = test['published'].apply(lambda x: x.hour)
-    test['length'] = test['content'].apply(len)
-    #test['number_of_tags'] = test['tags'].apply(lambda x: len(x.split()))
-    # [ ]:
-
-    # [ ]:
-
-
-    train['target'] = pd.read_csv(os.path.join(
-            PATH,
-            'train_log1p_recommends.csv'),
-        index_col='id').values
-
-
-    # [ ]:
-
-
-    train.tail()
-
-
-    # [ ]:
-
-
-    train.describe()
-
-
-    train.to_csv("mediumPopularity.csv.gz", index=False, compression="gzip")
-    test.to_csv("mediumPopularity_test.csv.gz", index=False, compression="gzip")
 # [ ]:
 
+
+del content_list, published_list, title_list, author_list, domain_list, tags_list, url_list
+gc.collect()
+
+
+train['week_day'] = train['published'].apply(lambda x: x.dayofweek)
+train['year'] = train['published'].apply(lambda x: x.year)
+train['month'] = train['published'].apply(lambda x: x.month)
+train['hour'] = train['published'].apply(lambda x: x.hour)
+train['length'] = train['content'].apply(len)
+#train['number_of_tags'] = train['tags'].apply(lambda x: len(x.split()))
+
+test['week_day'] = test['published'].apply(lambda x: x.dayofweek)
+test['year'] = test['published'].apply(lambda x: x.year)
+test['month'] = test['published'].apply(lambda x: x.month)
+test['hour'] = test['published'].apply(lambda x: x.hour)
+test['length'] = test['content'].apply(len)
+#test['number_of_tags'] = test['tags'].apply(lambda x: len(x.split()))
+# [ ]:
+
+# [ ]:
+
+
+train['target'] = pd.read_csv(os.path.join(
+        PATH,
+        'train_log1p_recommends.csv'),
+    index_col='id').values
+
+
+# [ ]:
+
+
+train.tail()
+
+
+# [ ]:
+
+
+train.describe()
+
+
+train.to_csv("mediumPopularity.csv.gz", index=False, compression="gzip")
+test.to_csv("mediumPopularity_test.csv.gz", index=False, compression="gzip")
+# [ ]:
+
+train_ = train
+train = train[train.year >= 2014]
 
 #train.to_csv("mediumPopularity.csv.gz", index=False, compression="gzip")
 #train = pd.read_csv("mediumPopularity.csv.gz", compression="gzip")
@@ -380,7 +382,7 @@ transform_pipeline = Pipeline([
 
         ('domain_tfidf', Pipeline([
             ('extract', FunctionTransformer(extract_domain_as_string, validate=False)),
-            ('count', TfidfVectorizer(max_features=10000)),
+            ('count', TfidfVectorizer(max_features=5000)),
 #            ("tfidf", TfidfTransformer()),
             ('shape', ShapeSaver())
         ])),
@@ -404,35 +406,34 @@ transform_pipeline = Pipeline([
             ('shape', ShapeSaver())
          ])),
 
-#        ('mon_q1', Pipeline([
-#            ('extract', FunctionTransformer(feature_month_q1, validate=False)),
-#            ('shape', ShapeSaver())
-#         ])),
-#        ('mon_q2', Pipeline([
-#            ('extract', FunctionTransformer(feature_month_q2, validate=False)),
-#            ('shape', ShapeSaver())
-#         ])),
-#        ('mon_q3', Pipeline([
-#            ('extract', FunctionTransformer(feature_month_q3, validate=False)),
-#            ('shape', ShapeSaver())
-#         ])),
-#        ('mon_q4', Pipeline([
-#            ('extract', FunctionTransformer(feature_month_q4, validate=False)),
-#            ('shape', ShapeSaver())
-#         ])),
+        ('mon_q1', Pipeline([
+            ('extract', FunctionTransformer(feature_month_q1, validate=False)),
+            ('shape', ShapeSaver())
+         ])),
+        ('mon_q2', Pipeline([
+            ('extract', FunctionTransformer(feature_month_q2, validate=False)),
+            ('shape', ShapeSaver())
+         ])),
+        ('mon_q3', Pipeline([
+            ('extract', FunctionTransformer(feature_month_q3, validate=False)),
+            ('shape', ShapeSaver())
+         ])),
+        ('mon_q4', Pipeline([
+            ('extract', FunctionTransformer(feature_month_q4, validate=False)),
+            ('shape', ShapeSaver())
+         ])),
 
-#        ('year', Pipeline([
-#            ('extract', FunctionTransformer(feature_year, validate=False)),
-#            ('ohe', OneHotEncoder()),
-#            ('shape', ShapeSaver())
-#         ])),
+        ('year', Pipeline([
+            ('extract', FunctionTransformer(feature_year, validate=False)),
+            ('scale', StandardScaler())
+         ])),
 
-#        ('tags_tfidf', Pipeline([
-#            ('extract', FunctionTransformer(extract_tags_as_string, validate=False)),
-#            ('count', TfidfVectorizer(max_features=10000)),
-##            ("tfidf", TfidfTransformer()),
-#            ('shape', ShapeSaver())
-#        ])),
+        ('tags_tfidf', Pipeline([
+            ('extract', FunctionTransformer(extract_tags_as_string, validate=False)),
+            ('count', TfidfVectorizer(max_features=5000)),
+#            ("tfidf", TfidfTransformer()),
+            ('shape', ShapeSaver())
+        ])),
 #
 #        ('title_tfidf', Pipeline([
 #            ('extract', FunctionTransformer(extract_title_as_string, validate=False)),
@@ -476,13 +477,13 @@ transform_pipeline = Pipeline([
                     min_df=5,
                     sublinear_tf=True
                     )),
-            ('tsvd1',
-                 decomposition.TruncatedSVD(
-                         n_components=200,
-                         n_iter=10,
-                         random_state=17)),
-#            ("tfidf", TfidfTransformer()),
-            ('shape', ShapeSaver())
+#            ('tsvd1',
+#                 decomposition.TruncatedSVD(
+#                         n_components=500,
+#                         n_iter=10,
+#                         random_state=17)),
+##            ("tfidf", TfidfTransformer()),
+#            ('shape', ShapeSaver())
         ])),
 
 #        ('content_stem_tokenize_tfidf', Pipeline([
@@ -1893,6 +1894,139 @@ def sub_13_11_2018_12_46_14():
     # <== predict
 
 
+
+# --------------------------------------------------------------------------
+#LGM valid mae: 1.132303696692134
+#Ridge valid mae: 1.0769027437525678
+#Mix valid mae: 1.1195779910696062
+
+#{'time': 'train_ridge15_11_2018_12_02_28',
+# 'transformed_train_df_shape': (42745, 65338),
+# 'features': ['author_tfidf',
+#  'domain_tfidf',
+#  'weekday_cat',
+#  'month_cat',
+#  'hour_val',
+#  'mon_q1',
+#  'mon_q2',
+#  'mon_q3',
+#  'mon_q4',
+#  'year',
+#  'tags_tfidf',
+#  'content_lemma_tfidf'],
+# 'clf': 'train_ridge',
+# 'valid_mae': 1.0769027437525678,
+# 'np.expm1_valid_mae': 1.9355732335085105}
+#
+#  {'time': 'train_lgm15_11_2018_12_03_34',
+# 'transformed_train_df_shape': (42745, 65338),
+# 'features': ['author_tfidf',
+#  'domain_tfidf',
+#  'weekday_cat',
+#  'month_cat',
+#  'hour_val',
+#  'mon_q1',
+#  'mon_q2',
+#  'mon_q3',
+#  'mon_q4',
+#  'year',
+#  'tags_tfidf',
+#  'content_lemma_tfidf'],
+# 'clf': 'lgm',
+# 'valid_mae': 1.132303696692134,
+# 'np.expm1_valid_mae': 2.1027961744285388}
+
+#    ==> 1.45388
+# --------------------------------------------------------------------------
+def 15_11_2018_11_48_04():
+    experiment_name = time.strftime("%d_%m_%Y_%H_%M_%S")
+    experiment = {}
+    experiment['time'] = experiment_name
+    experiment['submission_file'] = experiment['time'] + '.csv'
+
+    transformed_train_df = transform_pipeline.fit_transform(x_train_new)
+    transformed_test_df = transform_pipeline.transform(x_test_new)
+
+    X_train_new = transformed_train_df
+    y_train_new = train_df['target']
+    X_test_new = transformed_test_df
+
+    print(transformed_train_df.shape, transformed_test_df.shape)
+
+    experiment['transformed_train_df_shape'] = transformed_train_df.shape
+    experiment['transformed_test_df_shape'] = transformed_test_df.shape
+    experiment['features'] = [v[0] for v in transform_pipeline.steps[0][1].transformer_list]
+
+
+    train_part_size = int(0.7 * y_train_new.shape[0])  # !!!!!!!!!!!!!!!!!!!!!!!
+    X_train_part = X_train_new[:train_part_size, :]
+    y_train_part = y_train_new[:train_part_size]
+    X_valid = X_train_new[train_part_size:, :]
+    y_valid = y_train_new[train_part_size:]
+
+
+    # train ridge
+    ridge, ridge_pred, ridge_experiment, ridge_test_pred = train_ridge(
+            X_train_part,
+            y_train_part,
+            X_valid,
+            y_valid,
+            X_test_new)
+    ridge_pred1 = pred_to_src(ridge.predict(X_train_part))
+
+    lgm, lgb_pred, lgm_experiment, lgm_test_pred = train_lgm(
+            X_train_part,
+            y_train_part,
+            X_valid,
+            y_valid,
+            X_test_new)
+    lgb_pred1 = pred_to_src(lgm.predict(X_train_part))
+
+
+    lm_df = pd.DataFrame()
+    lm_df['lgb_pred'] = lgb_pred1
+    lm_df['ridge_pred'] = ridge_pred1
+    lm_df['target'] = y_train_part.values
+
+    lm = Ridge(random_state = 17, alpha=1)
+    lm.fit(lm_df[lm_df.columns[:-1]],
+           lm_df['target'],
+           )
+    print(lm.coef_)
+    coef_1 = lm.coef_[0]
+    coef_2 = lm.coef_[1]
+
+    mix_pred = coef_1 * lgb_pred + coef_2 * ridge_pred
+
+    print('LGM valid mae: {}'.format(lgm_experiment['valid_mae']))
+    print('Ridge valid mae: {}'.format(ridge_experiment['valid_mae']))
+    print('Mix valid mae: {}'.format(mean_absolute_error(y_valid, mix_pred)))
+
+    plt.hist(y_valid, bins=30, alpha=.5, color='red', label='true', range=(0,10));
+    plt.hist(ridge_pred, bins=30, alpha=.5, color='green', label='Ridge', range=(0,10));
+    plt.hist(mix_pred, bins=30, alpha=.5, color='maroon', label='mixed', range=(0,10));
+    plt.legend();
+
+    experiments[lgm_experiment['time']] = lgm_experiment
+    experiments[ridge_experiment['time']] = ridge_experiment
+
+    with open('medium_experiments.pickle', 'wb') as f:
+        pickle.dump(experiments, f)
+
+    ridge, ridge_full_pred = full_fit(ridge, X_train_new, y_train_new, X_test_new)
+    lgm, lgm_full_pred = full_lgm_fit(lgm, X_train_new, y_train_new, X_test_new)
+
+    mix_full_pred = coef_1 * lgm_full_pred + coef_2 * ridge_full_pred
+
+    # ==> predict
+    full_pred_corrected = \
+        mix_full_pred + (all_zero_mae - mix_full_pred.mean())
+    write_submission_file(prediction=full_pred_corrected,
+                          filename=experiment['submission_file'])
+    # <== predict
+
+
+
 # --------------------------------------------------------------------------
 def full_fit(clf, Xtrain, ytrain, Xtest):
     clf.fit(X_train_new, src_to_pred(y_train_new))
@@ -2152,12 +2286,12 @@ sgd, sgd_pred, sgd_experiment, sgd_test_pred = train_sgd(
 sgd_pred11 = pred_to_src(sgd.predict(X_train_part))
 
 lm_df = pd.DataFrame()
-#lm_df['lgb_pred'] = lgb_pred1
-lm_df['2lgb_pred'] = 0.5 + 1/(lgb_pred1**(-2))
+lm_df['lgb_pred'] = lgb_pred1
+#lm_df['2lgb_pred'] = 0.5 + 1/(lgb_pred1**(-2))
 #lm_df['1_2lgb_pred'] = 1/(lgb_pred1**2)
 #lm_df['3lgb_pred'] = (lgb_pred1**3)
-#lm_df['ridge_pred'] = ridge_pred1
-lm_df['2ridge_pred'] = 0.5 + 1/(ridge_pred1**(-2))
+lm_df['ridge_pred'] = ridge_pred1
+#lm_df['2ridge_pred'] = 0.5 + 1/(ridge_pred1**(-2))
 #lm_df['1_2ridge_pred'] = 1/(ridge_pred1**2)
 #lm_df['3ridge_pred'] = (ridge_pred1**3)
 lm_df['target'] = y_train_part.values
@@ -2597,12 +2731,11 @@ print(X_train_sequences[0])
 #model.add(Dense(units=64, activation='relu'))
 #model.add(Dense(units=1))
 
-
 # LSTM
 model = Sequential()
-model.add(Embedding(X_train_part.shape[0] + 1,
-                    64,  # Embedding size
-                    input_length=X_train_part.shape[0]))
+model.add(Embedding(input_dim=X_train_part.shape[0] + 1,
+                    output_dim=8,  # Embedding size
+                    input_length=X_train_part.shape[1]))
 model.add(LSTM(64))
 
 model.add(Dense(units=1))
@@ -2635,13 +2768,13 @@ X_valid_sequences = pad_sequences(
         value=N_FEATURES)
 
 scores = model.evaluate(
-        X_valid_sequences,
-        src_to_pred(yy_valid),  # LOG1P !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        X_valid,
+        src_to_pred(y_valid),  # LOG1P !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         verbose=1)
 
-print("NN MAE:", scores[1])  # MAE: 0.31?
+print("NN MAE:", scores[1])  # MAE: 1.30
 
-nn_pred = pred_to_src(model.predict(X_valid_sequences))
+nn_pred = pred_to_src(model.predict(X_valid))
 
 coef_1 = 0.5
 coef_2 = 0.5
