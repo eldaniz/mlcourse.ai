@@ -1894,7 +1894,6 @@ def sub_13_11_2018_12_46_14():
     # <== predict
 
 
-
 # --------------------------------------------------------------------------
 #LGM valid mae: 1.132303696692134
 #Ridge valid mae: 1.0769027437525678
@@ -1936,9 +1935,11 @@ def sub_13_11_2018_12_46_14():
 # 'valid_mae': 1.132303696692134,
 # 'np.expm1_valid_mae': 2.1027961744285388}
 
+#print(lm.coef_)
+#[ 0.15602482  0.99651637]
 #    ==> 1.45388
 # --------------------------------------------------------------------------
-def 15_11_2018_11_48_04():
+def sub15_11_2018_11_48_04():
     experiment_name = time.strftime("%d_%m_%Y_%H_%M_%S")
     experiment = {}
     experiment['time'] = experiment_name
@@ -2025,6 +2026,128 @@ def 15_11_2018_11_48_04():
                           filename=experiment['submission_file'])
     # <== predict
 
+
+# --------------------------------------------------------------------------
+#LGM valid mae: 1.132303696692134
+#Ridge valid mae: 1.0769027437525678
+#Mix valid mae: 1.0679738482317214
+
+#{'time': 'train_ridge15_11_2018_12_02_28',
+# 'transformed_train_df_shape': (42745, 65338),
+# 'features': ['author_tfidf',
+#  'domain_tfidf',
+#  'weekday_cat',
+#  'month_cat',
+#  'hour_val',
+#  'mon_q1',
+#  'mon_q2',
+#  'mon_q3',
+#  'mon_q4',
+#  'year',
+#  'tags_tfidf',
+#  'content_lemma_tfidf'],
+# 'clf': 'train_ridge',
+# 'valid_mae': 1.0769027437525678,
+# 'np.expm1_valid_mae': 1.9355732335085105}
+#
+#  {'time': 'train_lgm15_11_2018_12_03_34',
+# 'transformed_train_df_shape': (42745, 65338),
+# 'features': ['author_tfidf',
+#  'domain_tfidf',
+#  'weekday_cat',
+#  'month_cat',
+#  'hour_val',
+#  'mon_q1',
+#  'mon_q2',
+#  'mon_q3',
+#  'mon_q4',
+#  'year',
+#  'tags_tfidf',
+#  'content_lemma_tfidf'],
+# 'clf': 'lgm',
+# 'valid_mae': 1.132303696692134,
+# 'np.expm1_valid_mae': 2.1027961744285388}
+
+#print(lm.coef_)
+#[ 0.15602482  0.99651637]
+#    ==> 1.45020 !!!!!
+# --------------------------------------------------------------------------
+def sub15_11_2018_12_35_35():
+    experiment_name = time.strftime("%d_%m_%Y_%H_%M_%S")
+    experiment = {}
+    experiment['time'] = experiment_name
+    experiment['submission_file'] = experiment['time'] + '.csv'
+
+    transformed_train_df = transform_pipeline.fit_transform(x_train_new)
+    transformed_test_df = transform_pipeline.transform(x_test_new)
+
+    X_train_new = transformed_train_df
+    y_train_new = train_df['target']
+    X_test_new = transformed_test_df
+
+    print(transformed_train_df.shape, transformed_test_df.shape)
+
+    experiment['transformed_train_df_shape'] = transformed_train_df.shape
+    experiment['transformed_test_df_shape'] = transformed_test_df.shape
+    experiment['features'] = [v[0] for v in transform_pipeline.steps[0][1].transformer_list]
+
+
+    train_part_size = int(0.7 * y_train_new.shape[0])  # !!!!!!!!!!!!!!!!!!!!!!!
+    X_train_part = X_train_new[:train_part_size, :]
+    y_train_part = y_train_new[:train_part_size]
+    X_valid = X_train_new[train_part_size:, :]
+    y_valid = y_train_new[train_part_size:]
+
+
+    # train ridge
+    ridge, ridge_pred, ridge_experiment, ridge_test_pred = train_ridge(
+            X_train_part,
+            y_train_part,
+            X_valid,
+            y_valid,
+            X_test_new)
+    ridge_pred1 = pred_to_src(ridge.predict(X_train_part))
+
+    lgm, lgb_pred, lgm_experiment, lgm_test_pred = train_lgm(
+            X_train_part,
+            y_train_part,
+            X_valid,
+            y_valid,
+            X_test_new)
+    lgb_pred1 = pred_to_src(lgm.predict(X_train_part))
+
+
+    coef_1 = 0.6
+    coef_2 = 0.4
+
+    mix_pred = coef_1 * lgb_pred + coef_2 * ridge_pred
+
+    print('LGM valid mae: {}'.format(lgm_experiment['valid_mae']))
+    print('Ridge valid mae: {}'.format(ridge_experiment['valid_mae']))
+    print('Mix valid mae: {}'.format(mean_absolute_error(y_valid, mix_pred)))
+
+    plt.hist(y_valid, bins=30, alpha=.5, color='red', label='true', range=(0,10));
+    plt.hist(ridge_pred, bins=30, alpha=.5, color='green', label='Ridge', range=(0,10));
+    plt.hist(mix_pred, bins=30, alpha=.5, color='maroon', label='mixed', range=(0,10));
+    plt.legend();
+
+    experiments[lgm_experiment['time']] = lgm_experiment
+    experiments[ridge_experiment['time']] = ridge_experiment
+
+    with open('medium_experiments.pickle', 'wb') as f:
+        pickle.dump(experiments, f)
+
+    ridge, ridge_full_pred = full_fit(ridge, X_train_new, y_train_new, X_test_new)
+    lgm, lgm_full_pred = full_lgm_fit(lgm, X_train_new, y_train_new, X_test_new)
+
+    mix_full_pred = coef_1 * lgm_full_pred + coef_2 * ridge_full_pred
+
+    # ==> predict
+    full_pred_corrected = \
+        mix_full_pred + (all_zero_mae - mix_full_pred.mean())
+    write_submission_file(prediction=full_pred_corrected,
+                          filename=experiment['submission_file'])
+    # <== predict
 
 
 # --------------------------------------------------------------------------
