@@ -225,6 +225,7 @@ test.to_csv("mediumPopularity_test.csv.gz", index=False, compression="gzip")
 
 train_ = train
 train = train[train.year >= 2014]
+#train = train[train['length'] < 200000]
 
 #train.to_csv("mediumPopularity.csv.gz", index=False, compression="gzip")
 #train = pd.read_csv("mediumPopularity.csv.gz", compression="gzip")
@@ -472,10 +473,10 @@ transform_pipeline = Pipeline([
         ('content_lemma_tfidf', Pipeline([
             ('extract', FunctionTransformer(extract_content_as_string, validate=False)),
             ('count', TfidfLeammatizerVectorizer(
-                    max_features=50000,
+                    max_features=100000,
                     strip_accents='unicode',
-                    min_df=5,
-                    sublinear_tf=True
+                    min_df=5
+#                    sublinear_tf=True
                     )),
 #            ('tsvd1',
 #                 decomposition.TruncatedSVD(
@@ -2387,7 +2388,7 @@ def train_lgm(Xtrain, ytrain, Xvalid, yvalid, Xtest):
             label=src_to_pred(yvalid))
 
     param = {'num_leaves': 31,
-             'num_trees': 1000, # 500
+             'num_trees': 500,
              'objective': 'mean_absolute_error',
              'metric': 'mae'}
 
@@ -2574,7 +2575,7 @@ ridge, ridge_pred, ridge_experiment, ridge_test_pred = train_ridge(
         X_valid,
         y_valid,
         X_test_new,
-        alpha=2.74)
+        alpha=1.35)
 # 1.35  train_ridge valid mae: 1.0769027437525678
 # 2.6   train_ridge valid mae: 1.0769027437525678
 # 2.74  train_ridge valid mae: 1.0672972013178883
@@ -2637,6 +2638,23 @@ grid_params = {
 #            'solver' : ['svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga']
         }
 
+
+from sklearn import decomposition
+from sklearn.decomposition import TruncatedSVD
+pca = TruncatedSVD(n_components=5000, random_state=17)
+pca.fit(X_train_new)
+
+plt.figure(figsize=(10,7))
+plt.plot(np.cumsum(pca.explained_variance_ratio_), color='k', lw=2)
+plt.xlabel('Number of components')
+plt.ylabel('Total explained variance')
+plt.xlim(0, 5000)
+plt.yticks(np.arange(0, 1.1, 0.1))
+plt.axvline(1500, c='b')
+plt.axhline(0.9, c='r')
+plt.show();
+
+
 coef_1 = 0.6
 coef_2 = 0.4
 
@@ -2655,6 +2673,38 @@ plt.hist(y_valid, bins=30, alpha=.5, color='red', label='true', range=(0,10));
 plt.hist(ridge_pred, bins=30, alpha=.5, color='green', label='Ridge', range=(0,10));
 plt.hist(mix_pred, bins=30, alpha=.5, color='maroon', label='mixed', range=(0,10));
 plt.legend();
+
+X_train_new_pca = pca.transform(X_train_new)
+X_test_new_pca = pca.transform(X_test_new)
+X_train_new2 = hstack([X_train_new, X_train_new_pca])
+X_test_new2 = hstack([X_test_new, X_test_new_pca])
+
+X_train_part_pca = X_train_new2.tocsr()[:train_part_size, :]
+X_valid_pca = X_train_new2.tocsr()[train_part_size:, :]
+
+print(X_train_part_pca.shape, X_test_new2.shape)
+
+# train ridge2
+ridge_pca, ridge_pca_pred, ridge_pca_experiment, ridge_pca_test_pred = train_ridge(
+        X_train_part_pca,
+        y_train_part,
+        X_valid_pca,
+        y_valid,
+        X_test_new2,
+        alpha=1.35)
+print('Ridge pca valid mae: {}'.format(ridge_pca_experiment['valid_mae']))
+
+lgm_pca, lgb_pca_pred, lgm_pca_experiment, lgm_pca_test_pred = train_lgm(
+        X_train_part_pca,
+        y_train_part,
+        X_valid_pca,
+        y_valid,
+        X_test_new2)
+print('LGM pca valid mae: {}'.format(lgm_pca_experiment['valid_mae']))
+
+mix_pca_pred = coef_1 * lgb_pca_pred + coef_2 * ridge_pca_pred
+print('Mix pca valid mae: {}'.format(mean_absolute_error(y_valid, mix_pca_pred)))
+
 
 
 experiments[lgm_experiment['time']] = lgm_experiment
